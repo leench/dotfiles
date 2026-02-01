@@ -78,9 +78,15 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 # Custom plugins may be added to $ZSH_CUSTOM/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(git extract z sudo zsh-autosuggestions zsh-syntax-highlighting poetry you-should-use)
+plugins=(git extract z sudo zsh-autosuggestions zsh-syntax-highlighting poetry you-should-use history-substring-search command-not-found zsh-history-substring-search fzf)
 
 source $ZSH/oh-my-zsh.sh
+
+# 解决 Locale 警告：显式指定使用已生成的 en_US.UTF-8
+# 这样可以消除 Perl 等工具的警告，同时保持 Kitty 字体紧凑（不被 zh_CN 拉宽）
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+export LC_CTYPE=en_US.UTF-8
 
 # User configuration
 
@@ -177,3 +183,10 @@ function s() {
     ssh "$target"
   fi
 }
+
+# FZF optimization
+export FZF_DEFAULT_OPTS="-i --height 60% --layout reverse --border"
+source <(fzf --zsh)
+
+# Bind Ctrl+l to autosuggest-accept
+bindkey '^l' autosuggest-accept
