@@ -125,7 +125,7 @@ alias pa="poetry add"
 alias pl="poetry lock"
 
 export UV_DEFAULT_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
-export OPENROUTER_API_KEY="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"
+# export OPENROUTER_API_KEY="..." # Moved to ~/.zshrc_secret
 export OLLAMA_API_BASE=http://127.0.0.1:11434
 
 # export QT_QPA_PLATFORMTHEME=xdg-desktop-portal
@@ -136,6 +136,9 @@ export PATH="/home/niri/.local/bin:$PATH"
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+# Load secrets (not tracked by git)
+[[ -f ~/.zshrc_secret ]] && source ~/.zshrc_secret
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
