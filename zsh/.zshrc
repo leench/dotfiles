@@ -142,3 +142,38 @@ export NVM_DIR="$HOME/.nvm"
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+# 定义 SSH 选择函数
+function fzf_ssh_widget() {
+  # 只有当前命令行内容刚好是 "s" 时才触发
+  if [[ "$BUFFER" == "s" ]]; then
+    # 清空当前行，准备显示结果
+    local target=$(grep -P "^Host ([^*]+)$" ~/.ssh/config | sed 's/Host //' | fzf)
+    if [ -n "$target" ]; then
+      # 将选中的主机填入命令行并自动回车执行
+      BUFFER="ssh $target"
+      zle accept-line
+    else
+      # 如果取消了选择，恢复原来的 "s " (带空格)
+      BUFFER="s "
+      zle end-of-line
+    fi
+  else
+    # 其他情况，Space 键仍然只是输入一个空格
+    zle self-insert
+  fi
+}
+
+# 注册 Zsh 组件
+zle -N fzf_ssh_widget
+
+# 将 Space 键绑定到这个组件
+bindkey ' ' fzf_ssh_widget
+
+# 保留 s 函数作为备用 (防止脚本失效时依然可用)
+function s() {
+  local target=$(grep -P "^Host ([^*]+)$" ~/.ssh/config | sed 's/Host //' | fzf)
+  if [ -n "$target" ]; then
+    ssh "$target"
+  fi
+}

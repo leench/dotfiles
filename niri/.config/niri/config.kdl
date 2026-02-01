@@ -339,6 +339,8 @@ window-rule {
 
 window-rule {
     match app-id=r#"^1Password$"#
+    match app-id=r#"^1password$"#
+    match app-id=r#"^com\.onepassword\.1password$"#
     open-floating true
 }
 
