@@ -1,0 +1,69 @@
+* {
+    border: none;
+    border-radius: 0;
+    font-family: "JetBrainsMono Nerd Font", "Noto Sans CJK SC";
+    font-size: 15px; /* 针对 4K 200% 缩放调整 */
+    min-height: 0;
+}
+
+window#waybar {
+    background: rgba(30, 30, 46, 0.7); /* 暗色半透明 */
+    color: #cdd6f4;
+    transition-property: background-color;
+    transition-duration: .5s;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+#workspaces button {
+    padding: 0 5px;
+    color: #cdd6f4;
+}
+
+#workspaces button.active {
+    color: #89b4fa;
+    border-bottom: 3px solid #89b4fa;
+}
+
+#cpu, #memory, #custom-nvidia, #network, #pulseaudio, #clock, #tray {
+    padding: 0 15px;
+    margin: 4px 0;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#network, #custom-network {
+    background-color: #fab387; /* 橙色，代表速度 */
+    color: #11111b;
+    padding: 0 10px;
+    border-radius: 10px;
+    margin: 4px;
+}
+
+#pulseaudio {
+    color: #f9e2af;
+}
+
+#clock {
+    color: #a6e3a1;
+    padding: 0 15px;
+}
+
+#custom-power, #custom-reboot, #custom-lock, #custom-theme {
+    padding: 0 5px;
+    color: #f38ba8;
+}
+
+#custom-theme {
+    font-size: 18px;
+    color: #f9e2af;
+    margin-right: 15px;
+}
+
+#custom-lock {
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    margin-left: 10px;
+    padding-left: 10px;
+}
+
+#window {
+    font-weight: bold;
+}
