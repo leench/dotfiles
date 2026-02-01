@@ -11,7 +11,7 @@ echo "🔗 Linking config files with Stow..."
 cd "$DOTFILES_DIR"
 # List of packages to stow. Add more as needed.
 # Only including cross-platform CLI tools by default.
-PACKAGES=(nvim zsh tmux)
+PACKAGES=(nvim zsh tmux ssh)
 
 for pkg in "${PACKAGES[@]}"; do
     if [ -d "$pkg" ]; then
