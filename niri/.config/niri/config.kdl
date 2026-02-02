@@ -356,8 +356,8 @@ window-rule {
     match title=r#"^bluetui$"#
     match title=r#"^rmpc$"#
     open-floating true
-    default-column-width { fixed 800; }
-    default-window-height { fixed 500; }
+    default-column-width { fixed 1200; }
+    default-window-height { fixed 750; }
 }
 
 window-rule {
@@ -402,8 +402,8 @@ window-rule {
 window-rule {
     match app-id=r#"^niri-scratchpad$"#
     open-floating true
-    default-column-width { fixed 800; }
-    default-window-height { fixed 500; }
+    default-column-width { fixed 1200; }
+    default-window-height { fixed 750; }
 }
 
 binds {
