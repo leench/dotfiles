@@ -192,3 +192,4 @@ source <(fzf --zsh)
 
 # Bind Ctrl+l to autosuggest-accept
 bindkey '^l' autosuggest-accept
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
