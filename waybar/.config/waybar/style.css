@@ -67,3 +67,10 @@ window#waybar {
 #window {
     font-weight: bold;
 }
+
+#custom-overview {
+    padding: 0 15px;
+    margin: 4px 0;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    color: #89b4fa;
+}
