@@ -1,0 +1,26 @@
+#!/bin/bash
+# mpv 单实例包装脚本
+
+SOCKET="/tmp/mpvsocket"
+MPV_BIN="/usr/bin/mpv"
+
+if [ -S "$SOCKET" ]; then
+    if [ $# -eq 0 ]; then
+        # 如果没有参数，则尝试聚焦（取决于窗口管理器，此处仅取消暂停）
+        echo '{ "command": ["set_property", "pause", false] }' | socat - "$SOCKET"
+    else
+        for file in "$@"; do
+            # 获取绝对路径并转义引号
+            if [[ -e "$file" ]]; then
+                abs_path=$(realpath "$file" | sed 's/"/\\"/g')
+                echo "loadfile \"$abs_path\" append-play" | socat - "$SOCKET"
+            else
+                # 如果不是文件（如 URL），直接发送
+                echo "loadfile \"$file\" append-play" | socat - "$SOCKET"
+            fi
+        done
+    fi
+else
+    # 启动新的 mpv 实例
+    $MPV_BIN "$@"
+fi
