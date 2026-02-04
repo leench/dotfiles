@@ -279,7 +279,9 @@ spawn-at-startup "vicinae" "server"
 spawn-at-startup "mako"
 spawn-at-startup "mpd"
 spawn-at-startup "/home/niri/.local/bin/random_wallpaper.sh"
-spawn-at-startup "env" "LC_ALL=en_US.UTF-8" "waybar"
+// spawn-at-startup "env" "LC_ALL=en_US.UTF-8" "waybar"
+// spawn-at-startup "sh" "-c" "export LANG=zh_CN.UTF-8; dms"
+spawn-sh-at-startup "LANG=zh_CN.UTF-8 dms run"
 spawn-at-startup "/usr/lib/polkit-kde-authentication-agent-1"
 
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
@@ -333,7 +335,7 @@ window-rule {
 // Kitty 规则：仅去除背景绘制，透明度由 kitty 自身控制
 window-rule {
     match app-id=r#"^kitty$"#
-    default-column-width {}
+    default-column-width { proportion 0.5; }
     draw-border-with-background false
 }
 
@@ -342,6 +344,7 @@ window-rule {
     match app-id=r#"^1password$"#
     match app-id=r#"^com\.onepassword\.1password$"#
     match app-id=r#"^timeshift-gtk$"#
+    match app-id=r#"^org\.fcitx\.fcitx5-config-qt$"#
     open-floating true
 }
 
@@ -405,6 +408,16 @@ window-rule {
     open-floating true
     default-column-width { fixed 1200; }
     default-window-height { fixed 750; }
+}
+
+// Fcitx5 flickering fix
+window-rule {
+    // Match any app-id containing fcitx
+    match app-id=r#"fcitx"#
+    open-floating true
+    shadow {
+        off
+    }
 }
 
 binds {
