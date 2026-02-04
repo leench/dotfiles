@@ -132,6 +132,8 @@ alias pr="poetry run"
 alias pa="poetry add"
 alias pl="poetry lock"
 
+export EDITOR='nvim'
+
 export UV_DEFAULT_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
 # export OPENROUTER_API_KEY="..." # Moved to ~/.zshrc_secret
 export OLLAMA_API_BASE=http://127.0.0.1:11434
@@ -142,7 +144,7 @@ if [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" ]]; then
     export QT_STYLE_OVERRIDE=kvantum
 fi
 
-export PATH="/home/niri/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion

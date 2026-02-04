@@ -6,9 +6,15 @@
     "passthrough": false,
     "gtk-layer-shell": true,
     "height": 40,
-    "modules-left": ["niri/workspaces", "cpu", "memory", "custom/nvidia"],
+    "modules-left": ["custom/overview", "niri/workspaces", "cpu", "memory", "custom/nvidia"],
     "modules-center": ["niri/window"],
     "modules-right": ["network", "pulseaudio", "tray", "custom/theme", "clock", "custom/lock", "custom/reboot", "custom/power"],
+
+    "custom/overview": {
+        "format": " ",
+        "on-click": "niri msg action toggle-overview",
+        "tooltip": "Overview"
+    },
 
     "custom/theme": {
         "format": "{}",
