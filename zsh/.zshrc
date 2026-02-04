@@ -132,6 +132,8 @@ alias pr="poetry run"
 alias pa="poetry add"
 alias pl="poetry lock"
 
+export EDITOR='nvim'
+
 export UV_DEFAULT_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
 # export OPENROUTER_API_KEY="..." # Moved to ~/.zshrc_secret
 export OLLAMA_API_BASE=http://127.0.0.1:11434
