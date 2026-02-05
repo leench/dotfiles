@@ -182,13 +182,26 @@ zle -N fzf_ssh_widget
 # 将 Space 键绑定到这个组件
 bindkey ' ' fzf_ssh_widget
 
-# 保留 s 函数作为备用 (防止脚本失效时依然可用)
-function s() {
-  # 使用 awk 提取 Host 后面的值，这种写法在 BSD(macOS) 和 GNU(Linux) 下都兼容
-  local target=$(grep "^Host " ~/.ssh/config | grep -v "\*" | awk '{print $2}' | fzf)
-  if [ -n "$target" ]; then
-    ssh "$target"
-  fi
+# 1. 基础智能 SSH 判断
+ssh() {
+    if [ -n "$KITTY_PID" ] || [ "$TERM" = "xterm-kitty" ]; then
+        # 在 Kitty 中，使用 kitten 模式并开启心跳
+        # -o 选项确保即使 config 没写，也能带上心跳防止掉线
+        kitty +kitten ssh -o ServerAliveInterval=60 "$@"
+    else
+        /usr/bin/ssh -o ServerAliveInterval=60 "$@"
+    fi
+}
+
+# 2. 交互式选择函数
+s() {
+    # 提取配置中的 Host
+    local target=$(grep "^Host " ~/.ssh/config | grep -v "\*" | awk '{print $2}' | fzf --height 40% --reverse --border)
+    
+    if [ -n "$target" ]; then
+        # 这里直接调用上面定义的 ssh 函数，逻辑会自动衔接
+        ssh "$target"
+    fi
 }
 
 # FZF optimization
