@@ -8,7 +8,7 @@ local is_mac = wezterm.target_triple:find("apple") ~= nil
 if is_mac then
   -- macOS 特有配置
   config.font = wezterm.font('VictorMono Nerd Font Mono')
-  config.font_size = 13.5
+  config.font_size = 13
   config.window_decorations = "TITLE | RESIZE"
   config.macos_window_background_blur = 20
   config.initial_cols = 220 -- 建议先用这个值，等稳定了再调大
@@ -67,7 +67,7 @@ config.force_reverse_video_cursor = true
 
 -- 5. UI 与透明度优化 (适配你之前的 Neovim 透明需求)
 config.color_scheme = 'Catppuccin Macchiato'
-config.window_background_opacity = 0.85
+config.window_background_opacity = 0.95
 
 -- 7. 快捷键配置 (如果你习惯 Cmd + Enter 最大化)
 config.keys = {
