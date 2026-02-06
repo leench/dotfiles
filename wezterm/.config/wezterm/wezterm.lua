@@ -68,7 +68,8 @@ config.ssh_domains = {
 config.force_reverse_video_cursor = true
 
 -- 5. UI 与透明度优化 (适配你之前的 Neovim 透明需求)
-config.color_scheme = 'Catppuccin Macchiato'
+-- config.color_scheme = 'Catppuccin Macchiato'
+config.color_scheme = 'Tokyo Night Moon'
 config.window_background_opacity = 0.95
 
 -- 7. 快捷键配置 (如果你习惯 Cmd + Enter 最大化)
