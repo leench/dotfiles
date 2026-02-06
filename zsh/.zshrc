@@ -1,4 +1,4 @@
-[[ "$TERM" == "xterm-kitty" ]] && export TERM=xterm-256color
+# [[ "$TERM" == "xterm-kitty" ]] && export TERM=xterm-256color
 
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
@@ -182,24 +182,27 @@ zle -N fzf_ssh_widget
 # 将 Space 键绑定到这个组件
 bindkey ' ' fzf_ssh_widget
 
-# 1. 基础智能 SSH 判断
 ssh() {
-    if [ -n "$KITTY_PID" ] || [ "$TERM" = "xterm-kitty" ]; then
-        # 在 Kitty 中，使用 kitten 模式并开启心跳
-        # -o 选项确保即使 config 没写，也能带上心跳防止掉线
-        kitty +kitten ssh -o ServerAliveInterval=60 "$@"
+    # 检查当前是否在 Kitty 终端内
+    if [ -n "$KITTY_PID" ]; then
+        # 只有在真正的 Kitty 窗口里才用 kitten ssh
+        kitten ssh "$@"
     else
-        /usr/bin/ssh -o ServerAliveInterval=60 "$@"
+        # 在 WezTerm、iTerm2 或原生 TTY 中，使用标准 ssh
+        # 所有的心跳参数都已经写在 ~/.ssh/config 里的 "Host *" 下，所以这里不用带 -o
+        command ssh "$@"
     fi
 }
 
-# 2. 交互式选择函数
 s() {
-    # 提取配置中的 Host
-    local target=$(grep "^Host " ~/.ssh/config | grep -v "\*" | awk '{print $2}' | fzf --height 40% --reverse --border)
-    
+    local config_file="$HOME/.ssh/config"
+    [ ! -f "$config_file" ] && return 1
+
+    # 提取 Host，增加更健壮的过滤
+    local target=$(grep -i "^Host " "$config_file" | awk '{print $2}' | grep -v "\*" | fzf \
+        --height 40% --reverse --border --header "Select SSH Host")
+
     if [ -n "$target" ]; then
-        # 这里直接调用上面定义的 ssh 函数，逻辑会自动衔接
         ssh "$target"
     fi
 }
