@@ -4,6 +4,8 @@ local config = wezterm.config_builder()
 -- 1. 系统判断逻辑
 local is_mac = wezterm.target_triple:find("apple") ~= nil
 
+config.term = "xterm-256color"
+
 -- 2. 字体与字号的动态设置
 if is_mac then
   -- macOS 特有配置
