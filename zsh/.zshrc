@@ -185,13 +185,29 @@ zle -N fzf_ssh_widget
 # 将 Space 键绑定到这个组件
 bindkey ' ' fzf_ssh_widget
 
-# 保留 s 函数作为备用 (防止脚本失效时依然可用)
-function s() {
-  # 使用 awk 提取 Host 后面的值，这种写法在 BSD(macOS) 和 GNU(Linux) 下都兼容
-  local target=$(grep "^Host " ~/.ssh/config | grep -v "\*" | awk '{print $2}' | fzf)
-  if [ -n "$target" ]; then
-    ssh "$target"
-  fi
+ssh() {
+    # 检查当前是否在 Kitty 终端内
+    if [ -n "$KITTY_PID" ]; then
+        # 只有在真正的 Kitty 窗口里才用 kitten ssh
+        kitten ssh "$@"
+    else
+        # 在 WezTerm、iTerm2 或原生 TTY 中，使用标准 ssh
+        # 所有的心跳参数都已经写在 ~/.ssh/config 里的 "Host *" 下，所以这里不用带 -o
+        command ssh "$@"
+    fi
+}
+
+s() {
+    local config_file="$HOME/.ssh/config"
+    [ ! -f "$config_file" ] && return 1
+
+    # 提取 Host，增加更健壮的过滤
+    local target=$(grep -i "^Host " "$config_file" | awk '{print $2}' | grep -v "\*" | fzf \
+        --height 40% --reverse --border --header "Select SSH Host")
+
+    if [ -n "$target" ]; then
+        ssh "$target"
+    fi
 }
 
 # FZF optimization
