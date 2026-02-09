@@ -54,15 +54,3 @@ vim.api.nvim_create_autocmd("FileType", {
     vim.opt_local.expandtab = true
   end,
 })
---
--- -- 强行指定背景色，不依赖终端
--- vim.schedule(function()
---   local bg_color = "#222436" -- Tokyo Night Moon 的背景色
---   local hl_groups = {
---     "Normal", "NormalFloat", "NormalNC", "SignColumn",
---     "NeoTreeNormal", "NeoTreeNormalNC", "MsgArea",
---   }
---   for _, group in ipairs(hl_groups) do
---     vim.api.nvim_set_hl(0, group, { bg = bg_color, ctermbg = "none" })
---   end
--- end)
