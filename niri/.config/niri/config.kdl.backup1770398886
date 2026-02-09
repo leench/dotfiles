@@ -412,16 +412,12 @@ window-rule {
 
 // Fcitx5 flickering fix
 window-rule {
+    // Match any app-id containing fcitx
     match app-id=r#"fcitx"#
     open-floating true
     shadow {
         off
     }
-}
-
-layer-rule {
-    match namespace="^noctalia-overview-wallpaper$"
-    place-within-backdrop true
 }
 
 binds {
@@ -697,7 +693,3 @@ binds {
     // moving the mouse or pressing any other key.
     Mod+Shift+P { power-off-monitors; }
 }
-
-include "dms/cursor.kdl"
-
-include "dms/outputs.kdl"

@@ -4,6 +4,12 @@ return {
   {
     "folke/tokyonight.nvim",
     opts = {
+      style = "moon",      -- 恢复为 moon 模式
+      transparent = false, -- 关闭背景透明，让主题自带背景色
+      styles = {
+        sidebars = "dark",
+        floats = "dark",
+      },
       -- 当主题加载高亮时，进行自定义修改
       on_highlights = function(hl, c)
         hl.WinSeparator = {
