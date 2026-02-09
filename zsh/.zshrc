@@ -1,4 +1,4 @@
-[[ "$TERM" == "xterm-kitty" ]] && export TERM=xterm-256color
+# [[ "$TERM" == "xterm-kitty" ]] && export TERM=xterm-256color
 
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
@@ -89,6 +89,9 @@ source $ZSH/oh-my-zsh.sh
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 export LC_CTYPE=en_US.UTF-8
+
+# 强制开启真彩色支持
+export COLORTERM=truecolor
 
 # User configuration
 
@@ -199,3 +202,15 @@ source <(fzf --zsh)
 bindkey '^l' autosuggest-accept
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# 远程服务器专用的高清看图函数
+imgcat() {
+  local file=$1
+  if [[ -f "$file" ]]; then
+    local base64_contents=$(base64 < "$file")
+    # 发送 iTerm2 图片协议转义序列
+    printf "\033]1337;File=name=$(echo -n "$file" | base64);inline=1;size=$(wc -c < "$file"):$base64_contents\a\n"
+  else
+    echo "File not found: $file"
+  fi
+}
