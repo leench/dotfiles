@@ -6,11 +6,25 @@ return {
       scroll = { enabled = false }, -- 彻底关闭平滑滚动，恢复原生硬切感
       terminal = {
         win = {
-          position = "bottom", -- 可改为 "right" 让它在右侧显示
-          height = 0.75,        -- 占用屏幕高度的 30%
+          style = "terminal",
+          position = "float", -- 可改为 "right" 让它在右侧显示
+          width = 0.85,
+          height = 0.8,        -- 占用屏幕高度的 30%
+          border = "single",
         },
         wo = {
           winhighlight = "WinSeparator:SpecialChar", -- 使用更显眼的字符高亮
+        },
+      },
+      lazygit = {
+        -- 配置窗口样式
+        win = {
+          style = "float",
+          position = "float", -- 可改为 "right" 让它在右侧显示
+          width = 0,
+          height = 0.95,
+          -- border = "none",
+          border = "single",
         },
       },
     },
