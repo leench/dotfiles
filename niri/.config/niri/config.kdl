@@ -111,7 +111,7 @@ output "DP-1" {
 // https://yalter.github.io/niri/Configuration:-Layout
 layout {
     // Set gaps around windows in logical pixels.
-    gaps 16
+    gaps 8
 
     // When to center a column when changing focus, options are:
     // - "never", default behavior, focusing an off-screen column will keep at the left
@@ -119,7 +119,7 @@ layout {
     // - "always", the focused column will always be centered.
     // - "on-overflow", focusing a column will center it if it doesn't fit
     //   together with the previously focused column.
-    center-focused-column "never"
+    center-focused-column "on-overflow"
 
     // You can customize the widths that "switch-preset-column-width" (Mod+R) toggles between.
     preset-column-widths {
@@ -129,6 +129,7 @@ layout {
         proportion 0.33333
         proportion 0.5
         proportion 0.66667
+        proportion 0.8
         proportion 1.0
 
         // Fixed sets the width in logical pixels exactly.
@@ -160,7 +161,7 @@ layout {
         // off
 
         // How many logical pixels the ring extends out from the windows.
-        width 1
+        width 2
 
         // Colors can be set in a variety of ways:
         // - CSS named colors: "red"
@@ -273,8 +274,8 @@ overview {
 // See the binds section below for more spawn examples.
 
 // This line starts waybar, a commonly used bar for Wayland compositors.
-spawn-at-startup "1password" "--silent"
-spawn-at-startup "/home/niri/hid-host-gui"
+spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "1password" "--silent"
+spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "/home/niri/hid-host-gui" "--tray"
 spawn-at-startup "vicinae" "server"
 spawn-at-startup "mako"
 spawn-at-startup "mpd"
@@ -399,7 +400,7 @@ window-rule {
 // Example: enable rounded corners for all windows.
 // (This example rule is commented out with a "/-" in front.)
 window-rule {
-    geometry-corner-radius 12
+    geometry-corner-radius 0
     clip-to-geometry true
 }
 
