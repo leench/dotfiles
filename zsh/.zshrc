@@ -122,6 +122,7 @@ export COLORTERM=truecolor
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias vim="nvim"
+alias pvim='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 nvim'
 alias ge="gemini"
 alias ger="gemini --resume"
 alias gel="gemini --list-sessions"
@@ -140,6 +141,22 @@ export EDITOR='nvim'
 export UV_DEFAULT_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
 # export OPENROUTER_API_KEY="..." # Moved to ~/.zshrc_secret
 export OLLAMA_API_BASE=http://127.0.0.1:11434
+
+# 判断操作系统
+case "$(uname)" in
+    "Darwin")
+        # macOS 路径
+        alias chrome-dev='"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222 --user-data-dir="$HOME/Library/Application Support/Google/Chrome-Debug" --lang=zh-CN'
+        ;;
+    "Linux")
+        # Arch Linux 路径 (假设已安装 google-chrome-stable)
+        alias chrome-dev='google-chrome-stable --remote-debugging-port=9222 --user-data-dir="$HOME/.config/google-chrome-debug" --lang=zh-CN'
+        ;;
+    *)
+        # 其他系统默认（可选）
+        alias chrome-debug='google-chrome --remote-debugging-port=9222'
+        ;;
+esac
 
 # 仅在有显示环境时加载 GUI 相关变量
 if [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" ]]; then
@@ -186,13 +203,19 @@ zle -N fzf_ssh_widget
 bindkey ' ' fzf_ssh_widget
 
 ssh() {
-    # 检查当前是否在 Kitty 终端内
+    # 1. 优先级最高：拦截特定 Host 进行自动化登录
+    if [[ "$1" == "aliyun" ]]; then
+        # 这里的路径确保指向你的 expect 脚本
+        $HOME/.local/bin/ali.exp
+        return $?
+    fi
+
+    # 2. 优先级次之：根据终端环境选择 SSH 客户端
     if [ -n "$KITTY_PID" ]; then
-        # 只有在真正的 Kitty 窗口里才用 kitten ssh
+        # 在 Kitty 终端内，使用 kitten ssh (支持自动拷贝 terminfo 等特性)
         kitten ssh "$@"
     else
-        # 在 WezTerm、iTerm2 或原生 TTY 中，使用标准 ssh
-        # 所有的心跳参数都已经写在 ~/.ssh/config 里的 "Host *" 下，所以这里不用带 -o
+        # 在其他终端（如 macOS 的 iTerm2 或原生 TTY）使用标准 ssh
         command ssh "$@"
     fi
 }
