@@ -123,10 +123,10 @@ export COLORTERM=truecolor
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias vim="nvim"
 alias pvim='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 nvim'
+alias pge='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 gemini'
 alias ge="gemini"
 alias ger="gemini --resume"
 alias gel="gemini --list-sessions"
-alias gen="gemini"
 alias gea="gemini --ask"
 
 # Poetry aliases
@@ -203,22 +203,28 @@ zle -N fzf_ssh_widget
 bindkey ' ' fzf_ssh_widget
 
 ssh() {
-    # 1. 优先级最高：拦截特定 Host 进行自动化登录
-    if [[ "$1" == "aliyun" ]]; then
-        # 这里的路径确保指向你的 expect 脚本
-        $HOME/.local/bin/ali.exp
-        return $?
+    local target="$1"
+
+    # 1. 对 aliyun 自动建立并检查后台主连接
+    if [[ "$target" == "aliyun" || "$target" == "aaliyun" ]]; then
+        if ! (ssh -O check aliyun 2>/dev/null && ssh -q -o ConnectTimeout=1 aliyun true 2>/dev/null); then
+            ssh -O exit aliyun 2>/dev/null
+            echo "Establishing/Refreshing master connection for aliyun (OTP auto-fill)..."
+            # 彻底静默运行 expect 脚本
+            $HOME/.local/bin/ali.exp >/dev/null 2>&1
+            sleep 0.5
+        fi
+        [[ "$target" == "aaliyun" ]] && target="aliyun"
     fi
 
-    # 2. 优先级次之：根据终端环境选择 SSH 客户端
-    if [ -n "$KITTY_PID" ]; then
-        # 在 Kitty 终端内，使用 kitten ssh (支持自动拷贝 terminfo 等特性)
-        kitten ssh "$@"
-    else
-        # 在其他终端（如 macOS 的 iTerm2 或原生 TTY）使用标准 ssh
-        command ssh "$@"
-    fi
+    # 2. 交互式连接
+    # 这里我们直接使用原生 ssh，它会通过 ControlPath 复用之前由 ali.exp 建立的隧道
+    # 这样既能继承 ali.exp 的 OTP 认证，又不会产生 KITTY_DATA_START 刷屏
+    command ssh "$target" "${@:2}"
 }
+
+# 辅助函数：手动清理所有 SSH Sockets
+alias ssc='rm -f ~/.ssh/sockets/* && echo "SSH sockets cleared."'
 
 s() {
     local config_file="$HOME/.ssh/config"
