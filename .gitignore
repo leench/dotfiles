@@ -1,3 +1,4 @@
 zsh/.zshrc_secret
 .DS_Store
 **/.DS_Store
+nvim/.config/nvim/lazy-lock.json

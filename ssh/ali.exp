@@ -1,0 +1,29 @@
+#!/usr/bin/expect -f
+
+# 禁用 log_user，这样 spawn 的过程（包括警告）都不会显示在终端上
+log_user 0
+
+set timeout 30
+set env(LC_ALL) "en_US.UTF-8"
+set env(LANG) "en_US.UTF-8"
+
+# 从环境变量获取 1Password Item 名称 (在 ~/.zshrc_secret 中定义)
+set otp_item_name $env(ALIYUN_OTP_NAME)
+
+# 1. 启动 SSH Master 模式
+spawn ssh -M -N -f -o ConnectTimeout=5 aliyun
+
+expect {
+    "Please Input Mfa Code (OTP):" {
+        # 使用环境变量提取 OTP
+        set otp [exec op item get $otp_item_name --otp]
+        send "$otp\r"
+        exp_continue
+    }
+    eof {
+        exit 0
+    }
+    timeout {
+        exit 1
+    }
+}
