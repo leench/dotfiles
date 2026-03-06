@@ -54,14 +54,3 @@ vim.api.nvim_create_autocmd("FileType", {
     vim.opt_local.expandtab = true
   end,
 })
-
--- 强行在加载最后瞬间执行一次透明化
--- vim.schedule(function()
---   local hl_groups = {
---     "Normal", "NormalFloat", "NormalNC", "SignColumn",
---     "NeoTreeNormal", "NeoTreeNormalNC", "MsgArea",
---   }
---   for _, group in ipairs(hl_groups) do
---     vim.api.nvim_set_hl(0, group, { bg = "none", ctermbg = "none" })
---   end
--- end)

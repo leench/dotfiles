@@ -122,10 +122,11 @@ export COLORTERM=truecolor
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias vim="nvim"
+alias pvim='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 nvim'
+alias pge='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 gemini'
 alias ge="gemini"
 alias ger="gemini --resume"
 alias gel="gemini --list-sessions"
-alias gen="gemini"
 alias gea="gemini --ask"
 
 # Poetry aliases
@@ -140,6 +141,22 @@ export EDITOR='nvim'
 export UV_DEFAULT_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
 # export OPENROUTER_API_KEY="..." # Moved to ~/.zshrc_secret
 export OLLAMA_API_BASE=http://127.0.0.1:11434
+
+# 判断操作系统
+case "$(uname)" in
+    "Darwin")
+        # macOS 路径
+        alias chrome-dev='"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222 --user-data-dir="$HOME/Library/Application Support/Google/Chrome-Debug" --lang=zh-CN'
+        ;;
+    "Linux")
+        # Arch Linux 路径 (假设已安装 google-chrome-stable)
+        alias chrome-dev='google-chrome-stable --remote-debugging-port=9222 --user-data-dir="$HOME/.config/google-chrome-debug" --lang=zh-CN'
+        ;;
+    *)
+        # 其他系统默认（可选）
+        alias chrome-debug='google-chrome --remote-debugging-port=9222'
+        ;;
+esac
 
 # 仅在有显示环境时加载 GUI 相关变量
 if [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" ]]; then
@@ -186,16 +203,28 @@ zle -N fzf_ssh_widget
 bindkey ' ' fzf_ssh_widget
 
 ssh() {
-    # 检查当前是否在 Kitty 终端内
-    if [ -n "$KITTY_PID" ]; then
-        # 只有在真正的 Kitty 窗口里才用 kitten ssh
-        kitten ssh "$@"
-    else
-        # 在 WezTerm、iTerm2 或原生 TTY 中，使用标准 ssh
-        # 所有的心跳参数都已经写在 ~/.ssh/config 里的 "Host *" 下，所以这里不用带 -o
-        command ssh "$@"
+    local target="$1"
+
+    # 1. 对 aliyun 自动建立并检查后台主连接
+    if [[ "$target" == "aliyun" || "$target" == "aaliyun" ]]; then
+        if ! (ssh -O check aliyun 2>/dev/null && ssh -q -o ConnectTimeout=1 aliyun true 2>/dev/null); then
+            ssh -O exit aliyun 2>/dev/null
+            echo "Establishing/Refreshing master connection for aliyun (OTP auto-fill)..."
+            # 彻底静默运行 expect 脚本
+            $HOME/.local/bin/ali.exp >/dev/null 2>&1
+            sleep 0.5
+        fi
+        [[ "$target" == "aaliyun" ]] && target="aliyun"
     fi
+
+    # 2. 交互式连接
+    # 这里我们直接使用原生 ssh，它会通过 ControlPath 复用之前由 ali.exp 建立的隧道
+    # 这样既能继承 ali.exp 的 OTP 认证，又不会产生 KITTY_DATA_START 刷屏
+    command ssh "$target" "${@:2}"
 }
+
+# 辅助函数：手动清理所有 SSH Sockets
+alias ssc='rm -f ~/.ssh/sockets/* && echo "SSH sockets cleared."'
 
 s() {
     local config_file="$HOME/.ssh/config"
@@ -230,3 +259,8 @@ imgcat() {
     echo "File not found: $file"
   fi
 }
+# The following lines have been added by Docker Desktop to enable Docker CLI completions.
+fpath=(/Users/leen/.docker/completions $fpath)
+autoload -Uz compinit
+compinit
+# End of Docker CLI completions

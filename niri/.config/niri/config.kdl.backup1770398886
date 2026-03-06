@@ -106,17 +106,12 @@ output "DP-1" {
     position x=1280 y=0
 }
 
-output "headless-0" {
-    mode "1920x1080"
-    scale 1.0
-}
-
 // Settings that influence how windows are positioned and sized.
 // Find more information on the wiki:
 // https://yalter.github.io/niri/Configuration:-Layout
 layout {
     // Set gaps around windows in logical pixels.
-    gaps 12
+    gaps 16
 
     // When to center a column when changing focus, options are:
     // - "never", default behavior, focusing an off-screen column will keep at the left
@@ -124,7 +119,7 @@ layout {
     // - "always", the focused column will always be centered.
     // - "on-overflow", focusing a column will center it if it doesn't fit
     //   together with the previously focused column.
-    center-focused-column "on-overflow"
+    center-focused-column "never"
 
     // You can customize the widths that "switch-preset-column-width" (Mod+R) toggles between.
     preset-column-widths {
@@ -134,7 +129,6 @@ layout {
         proportion 0.33333
         proportion 0.5
         proportion 0.66667
-        proportion 0.8
         proportion 1.0
 
         // Fixed sets the width in logical pixels exactly.
@@ -166,7 +160,7 @@ layout {
         // off
 
         // How many logical pixels the ring extends out from the windows.
-        width 2
+        width 1
 
         // Colors can be set in a variety of ways:
         // - CSS named colors: "red"
@@ -279,8 +273,8 @@ overview {
 // See the binds section below for more spawn examples.
 
 // This line starts waybar, a commonly used bar for Wayland compositors.
-spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "1password" "--silent"
-spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "/home/niri/hid-host-gui" "--tray"
+spawn-at-startup "1password" "--silent"
+spawn-at-startup "/home/niri/hid-host-gui"
 spawn-at-startup "vicinae" "server"
 spawn-at-startup "mako"
 spawn-at-startup "mpd"
@@ -405,7 +399,7 @@ window-rule {
 // Example: enable rounded corners for all windows.
 // (This example rule is commented out with a "/-" in front.)
 window-rule {
-    geometry-corner-radius 1
+    geometry-corner-radius 12
     clip-to-geometry true
 }
 
@@ -418,16 +412,12 @@ window-rule {
 
 // Fcitx5 flickering fix
 window-rule {
+    // Match any app-id containing fcitx
     match app-id=r#"fcitx"#
     open-floating true
     shadow {
         off
     }
-}
-
-layer-rule {
-    match namespace="^noctalia-overview-wallpaper$"
-    place-within-backdrop true
 }
 
 binds {
@@ -703,9 +693,3 @@ binds {
     // moving the mouse or pressing any other key.
     Mod+Shift+P { power-off-monitors; }
 }
-
-include "dms/cursor.kdl"
-
-include "dms/outputs.kdl"
-
-include "dms/windowrules.kdl"
