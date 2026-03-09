@@ -586,9 +586,9 @@ binds {
 
     // Mouse Wheel Bindings
     
-    // Mod + Scroll: Scroll through windows in current workspace
-    Mod+WheelScrollDown      cooldown-ms=150 { focus-column-right; }
-    Mod+WheelScrollUp        cooldown-ms=150 { focus-column-left; }
+    // Mod + Scroll: Adjust window width
+    Mod+WheelScrollDown      cooldown-ms=150 { set-column-width "-5%"; }
+    Mod+WheelScrollUp        cooldown-ms=150 { set-column-width "+5%"; }
 
     // Mod + Ctrl + Scroll: Switch workspaces
     Mod+Ctrl+WheelScrollDown cooldown-ms=150 { focus-workspace-down; }
