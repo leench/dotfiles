@@ -1,189 +1,162 @@
-# [[ "$TERM" == "xterm-kitty" ]] && export TERM=xterm-256color
-
-# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
-# Initialization code that may require console input (password prompts, [y/n]
-# confirmations, etc.) must go above this block; everything else may go below.
+# ===============================================================
+# 1. Powerlevel10k 即时响应 (保持在文件顶部)
+# ===============================================================
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
-# If you come from bash you might have to change your $PATH.
-# export PATH=$HOME/bin:$HOME/.local/bin:/usr/local/bin:$PATH
+# ===============================================================
+# 2. 基础环境变量与路径设置
+# ===============================================================
+export PATH="$HOME/.local/bin:$PATH"
+export EDITOR='nvim'
 
-# Path to your Oh My Zsh installation.
-export ZSH="$HOME/.oh-my-zsh"
-
-# Set name of the theme to load --- if set to "random", it will
-# load a random theme each time Oh My Zsh is loaded, in which case,
-# to know which specific one was loaded, run: echo $RANDOM_THEME
-# See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
-# ZSH_THEME="robbyrussell"
-ZSH_THEME="powerlevel10k/powerlevel10k"
-
-# Set list of themes to pick from when loading at random
-# Setting this variable when ZSH_THEME=random will cause zsh to load
-# a theme from this variable instead of looking in $ZSH/themes/
-# If set to an empty array, this variable will have no effect.
-# ZSH_THEME_RANDOM_CANDIDATES=( "robbyrussell" "agnoster" )
-
-# Uncomment the following line to use case-sensitive completion.
-# CASE_SENSITIVE="true"
-
-# Uncomment the following line to use hyphen-insensitive completion.
-# Case-sensitive completion must be off. _ and - will be interchangeable.
-# HYPHEN_INSENSITIVE="true"
-
-# Uncomment one of the following lines to change the auto-update behavior
-# zstyle ':omz:update' mode disabled  # disable automatic updates
-# zstyle ':omz:update' mode auto      # update automatically without asking
-# zstyle ':omz:update' mode reminder  # just remind me to update when it's time
-
-# Uncomment the following line to change how often to auto-update (in days).
-# zstyle ':omz:update' frequency 13
-
-# Uncomment the following line if pasting URLs and other text is messed up.
-# DISABLE_MAGIC_FUNCTIONS="true"
-
-# Uncomment the following line to disable colors in ls.
-# DISABLE_LS_COLORS="true"
-
-# Uncomment the following line to disable auto-setting terminal title.
-# DISABLE_AUTO_TITLE="true"
-
-# Uncomment the following line to enable command auto-correction.
-# ENABLE_CORRECTION="true"
-
-# Uncomment the following line to display red dots whilst waiting for completion.
-# You can also set it to another string to have that shown instead of the default red dots.
-# e.g. COMPLETION_WAITING_DOTS="%F{yellow}waiting...%f"
-# Caution: this setting can cause issues with multiline prompts in zsh < 5.7.1 (see #5765)
-# COMPLETION_WAITING_DOTS="true"
-
-# Uncomment the following line if you want to disable marking untracked files
-# under VCS as dirty. This makes repository status check for large repositories
-# much, much faster.
-# DISABLE_UNTRACKED_FILES_DIRTY="true"
-
-# Uncomment the following line if you want to change the command execution time
-# stamp shown in the history command output.
-# You can set one of the optional three formats:
-# "mm/dd/yyyy"|"dd.mm.yyyy"|"yyyy-mm-dd"
-# or set a custom format using the strftime function format specifications,
-# see 'man strftime' for details.
-# HIST_STAMPS="mm/dd/yyyy"
-
-# Would you like to use another custom folder than $ZSH/custom?
-# ZSH_CUSTOM=/path/to/new-custom-folder
-
-# Which plugins would you like to load?
-# Standard plugins can be found in $ZSH/plugins/
-# Custom plugins may be added to $ZSH_CUSTOM/plugins/
-# Example format: plugins=(rails git textmate ruby lighthouse)
-# Add wisely, as too many plugins slow down shell startup.
-plugins=(git extract z sudo zsh-autosuggestions zsh-syntax-highlighting poetry you-should-use history-substring-search command-not-found zsh-history-substring-search fzf)
-
-source $ZSH/oh-my-zsh.sh
-
-# 解决 Locale 警告：显式指定使用已生成的 en_US.UTF-8
-# 这样可以消除 Perl 等工具的警告，同时保持 Kitty 字体紧凑（不被 zh_CN 拉宽）
+# 解决 Locale 警告，保持终端一致性
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 export LC_CTYPE=en_US.UTF-8
 
-# 强制开启真彩色支持
+# 开启终端真彩色支持
 export COLORTERM=truecolor
 
-# User configuration
+# ===============================================================
+# 3. Oh My Zsh 核心配置
+# ===============================================================
+export ZSH="$HOME/.oh-my-zsh"
 
-# export MANPATH="/usr/local/man:$MANPATH"
+# 主题设置
+ZSH_THEME="powerlevel10k/powerlevel10k"
 
-# You may need to manually set your language environment
-# export LANG=en_US.UTF-8
+# 插件列表
+plugins=(
+    git 
+    extract 
+    z 
+    sudo 
+    zsh-autosuggestions 
+    zsh-syntax-highlighting 
+    poetry 
+    you-should-use 
+    history-substring-search 
+    command-not-found 
+    fzf
+)
 
-# Preferred editor for local and remote sessions
-# if [[ -n $SSH_CONNECTION ]]; then
-#   export EDITOR='vim'
-# else
-#   export EDITOR='nvim'
-# fi
+# 加载 Oh My Zsh
+source $ZSH/oh-my-zsh.sh
 
-# Compilation flags
-# export ARCHFLAGS="-arch $(uname -m)"
+# ===============================================================
+# 4. 工具与版本管理器初始化
+# ===============================================================
 
-# Set personal aliases, overriding those provided by Oh My Zsh libs,
-# plugins, and themes. Aliases can be placed here, though Oh My Zsh
-# users are encouraged to define aliases within a top-level file in
-# the $ZSH_CUSTOM folder, with .zsh extension. Examples:
-# - $ZSH_CUSTOM/aliases.zsh
-# - $ZSH_CUSTOM/macos.zsh
-# For a full list of active aliases, run `alias`.
-#
-# Example aliases
-# alias zshconfig="mate ~/.zshrc"
-# alias ohmyzsh="mate ~/.oh-my-zsh"
+# NVM 初始化
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+# FZF 初始化与优化
+export FZF_DEFAULT_OPTS="-i --height 60% --layout reverse --border"
+source <(fzf --zsh)
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# Poetry & Python 环境
+export UV_DEFAULT_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
+export OLLAMA_API_BASE=http://127.0.0.1:11434
+
+# Docker Completions
+fpath=(/Users/leen/.docker/completions $fpath)
+autoload -Uz compinit && compinit
+
+# GUI 环境变量 (仅在有显示环境时)
+if [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" ]]; then
+    export QT_QPA_PLATFORMTHEME=kvantum
+    export QT_STYLE_OVERRIDE=kvantum
+fi
+
+# ===============================================================
+# 5. 别名设置 (Aliases)
+# ===============================================================
+
+# 通用别名
 alias vim="nvim"
-alias pvim='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 nvim'
-alias pge='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 gemini'
+alias ssc='rm -f ~/.ssh/sockets/* && echo "SSH sockets cleared."'
+
+# Gemini 相关
 alias ge="gemini"
 alias ger="gemini --resume"
 alias gel="gemini --list-sessions"
 alias gea="gemini --ask"
+alias pge='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 gemini'
+alias pcodex='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 codex'
+alias pvim='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 nvim'
 
-# Poetry aliases
+# Poetry 常用命令
 alias p="poetry"
 alias pi="poetry install"
 alias pr="poetry run"
 alias pa="poetry add"
 alias pl="poetry lock"
 
-export EDITOR='nvim'
-
-export UV_DEFAULT_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
-# export OPENROUTER_API_KEY="..." # Moved to ~/.zshrc_secret
-export OLLAMA_API_BASE=http://127.0.0.1:11434
-
-# 判断操作系统
+# 浏览器调试
 case "$(uname)" in
     "Darwin")
-        # macOS 路径
         alias chrome-dev='"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222 --user-data-dir="$HOME/Library/Application Support/Google/Chrome-Debug" --lang=zh-CN'
         ;;
     "Linux")
-        # Arch Linux 路径 (假设已安装 google-chrome-stable)
         alias chrome-dev='google-chrome-stable --remote-debugging-port=9222 --user-data-dir="$HOME/.config/google-chrome-debug" --lang=zh-CN'
-        ;;
-    *)
-        # 其他系统默认（可选）
-        alias chrome-debug='google-chrome --remote-debugging-port=9222'
         ;;
 esac
 
-# 仅在有显示环境时加载 GUI 相关变量
-if [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" ]]; then
-    export QT_QPA_PLATFORMTHEME=kvantum
-    export QT_STYLE_OVERRIDE=kvantum
-fi
+# ===============================================================
+# 6. 自定义函数 (Functions)
+# ===============================================================
 
-export PATH="$HOME/.local/bin:$PATH"
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+# 代理开关
+proxy() {
+    export HTTP_PROXY="http://127.0.0.1:7890"
+    export HTTPS_PROXY="http://127.0.0.1:7890"
+    export ALL_PROXY="socks5://127.0.0.1:7890"
+    export NO_PROXY="localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,*.local,*.internal"
+    if [ $# -eq 0 ]; then
+        echo "Proxy environment variables set."
+    else
+        "$@"
+    fi
+}
+alias proxy='proxy '
 
-# Load secrets (not tracked by git)
-[[ -f ~/.zshrc_secret ]] && source ~/.zshrc_secret
+# SSH 增强与 FZF 选择器
+ssh() {
+    local target="$1"
+    if [[ "$target" == "aliyun" || "$target" == "aaliyun" ]]; then
+        if ! (ssh -O check aliyun 2>/dev/null && ssh -q -o ConnectTimeout=1 aliyun true 2>/dev/null); then
+            ssh -O exit aliyun 2>/dev/null
+            echo "1Password 正在准备 OTP..."
+            $HOME/.local/bin/ali.exp
+            sleep 0.5
+        fi
+        [[ "$target" == "aaliyun" ]] && target="aliyun"
+    fi
 
-# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+    if [ -n "$KITTY_PID" ]; then
+        kitten ssh "$target" "${@:2}"
+    else
+        command ssh "$target" "${@:2}"
+    fi
+}
 
-# 定义 SSH 选择函数
+s() {
+    local config_file="$HOME/.ssh/config"
+    [ ! -f "$config_file" ] && return 1
+    local target=$(grep -i "^Host " "$config_file" | awk '{print $2}' | grep -v "\*" | fzf \
+        --height 40% --reverse --border --header "Select SSH Host")
+    [ -n "$target" ] && ssh "$target"
+}
+
+# FZF SSH Widget (空格键触发)
 function fzf_ssh_widget() {
   if [[ "$BUFFER" == "s" ]]; then
-    # 兼容 macOS 和 Linux 的提取方式：
-    # 1. 找以 Host 开头的行
-    # 2. 排除包含通配符 * 的行
-    # 3. 打印第二个字段（即 Hostname）
     local target=$(awk '/^Host / && !/\*/ {print $2}' ~/.ssh/config | fzf)
-    
     if [ -n "$target" ]; then
       BUFFER="ssh $target"
       zle accept-line
@@ -195,72 +168,29 @@ function fzf_ssh_widget() {
     zle self-insert
   fi
 }
-
-# 注册 Zsh 组件
 zle -N fzf_ssh_widget
-
-# 将 Space 键绑定到这个组件
 bindkey ' ' fzf_ssh_widget
 
-ssh() {
-    local target="$1"
-
-    # 1. 对 aliyun 自动建立并检查后台主连接
-    if [[ "$target" == "aliyun" || "$target" == "aaliyun" ]]; then
-        if ! (ssh -O check aliyun 2>/dev/null && ssh -q -o ConnectTimeout=1 aliyun true 2>/dev/null); then
-            ssh -O exit aliyun 2>/dev/null
-            echo "Establishing/Refreshing master connection for aliyun (OTP auto-fill)..."
-            # 彻底静默运行 expect 脚本
-            $HOME/.local/bin/ali.exp >/dev/null 2>&1
-            sleep 0.5
-        fi
-        [[ "$target" == "aaliyun" ]] && target="aliyun"
-    fi
-
-    # 2. 交互式连接
-    # 这里我们直接使用原生 ssh，它会通过 ControlPath 复用之前由 ali.exp 建立的隧道
-    # 这样既能继承 ali.exp 的 OTP 认证，又不会产生 KITTY_DATA_START 刷屏
-    command ssh "$target" "${@:2}"
-}
-
-# 辅助函数：手动清理所有 SSH Sockets
-alias ssc='rm -f ~/.ssh/sockets/* && echo "SSH sockets cleared."'
-
-s() {
-    local config_file="$HOME/.ssh/config"
-    [ ! -f "$config_file" ] && return 1
-
-    # 提取 Host，增加更健壮的过滤
-    local target=$(grep -i "^Host " "$config_file" | awk '{print $2}' | grep -v "\*" | fzf \
-        --height 40% --reverse --border --header "Select SSH Host")
-
-    if [ -n "$target" ]; then
-        ssh "$target"
-    fi
-}
-
-# FZF optimization
-export FZF_DEFAULT_OPTS="-i --height 60% --layout reverse --border"
-source <(fzf --zsh)
-
-# Bind Ctrl+l to autosuggest-accept
-bindkey '^l' autosuggest-accept
-
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-
-# 远程服务器专用的高清看图函数
+# 远程看图
 imgcat() {
   local file=$1
   if [[ -f "$file" ]]; then
     local base64_contents=$(base64 < "$file")
-    # 发送 iTerm2 图片协议转义序列
     printf "\033]1337;File=name=$(echo -n "$file" | base64);inline=1;size=$(wc -c < "$file"):$base64_contents\a\n"
   else
     echo "File not found: $file"
   fi
 }
-# The following lines have been added by Docker Desktop to enable Docker CLI completions.
-fpath=(/Users/leen/.docker/completions $fpath)
-autoload -Uz compinit
-compinit
-# End of Docker CLI completions
+
+# 快捷键绑定
+bindkey '^l' autosuggest-accept
+
+# ===============================================================
+# 7. 外部配置加载 (放在最后以确保覆盖)
+# ===============================================================
+
+# 加载私密变量 (如 API Keys)
+[[ -f ~/.zshrc_secret ]] && source ~/.zshrc_secret
+
+# 加载 Powerlevel10k 样式配置
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
