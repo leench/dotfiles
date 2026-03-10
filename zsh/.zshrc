@@ -10,10 +10,17 @@ _update_dotfiles() {
     # 每天只检查一次更新
     if [[ ! -f "$cache_file" || "$(cat "$cache_file")" != "$today" ]]; then
         if [[ -d ~/dotfiles/.git ]]; then
-            echo "🔄 Checking for dotfiles updates..."
+            cd ~/dotfiles
+            
+            # 脏检查：如果有未提交的改动，进行提醒
+            if [[ -n $(git status --porcelain) ]]; then
+                echo -e "\033[0;33m检测到 dotfiles 有未提交的更改，请记得提交。\033[0m"
+            fi
+
+            echo "正在检查 dotfiles 更新..."
             # 在后台异步拉取，并使用 --autostash 处理未提交的本地改动
             (
-                cd ~/dotfiles
+                # 这里不需要再次 cd，因为父进程已经 cd 过了
                 # --rebase --autostash 可以平滑地在拉取后重新应用你的本地修改
                 if git pull --quiet --rebase --autostash origin main >/dev/null 2>&1; then
                     echo "$today" > "$cache_file"
