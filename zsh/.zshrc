@@ -1,4 +1,30 @@
 # ===============================================================
+# 0. Dotfiles 自动更新 (每日检查)
+# 必须放在 p10k instant prompt 之前以避免 [WARNING]
+# ===============================================================
+_update_dotfiles() {
+    local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}"
+    local cache_file="$cache_dir/dotfiles_update_check"
+    local today=$(date +%Y-%m-%d)
+
+    # 每天只检查一次更新
+    if [[ ! -f "$cache_file" || "$(cat "$cache_file")" != "$today" ]]; then
+        if [[ -d ~/dotfiles/.git ]]; then
+            echo "🔄 Checking for dotfiles updates..."
+            # 在后台异步拉取，并使用 --autostash 处理未提交的本地改动
+            (
+                cd ~/dotfiles
+                # --rebase --autostash 可以平滑地在拉取后重新应用你的本地修改
+                if git pull --quiet --rebase --autostash origin main >/dev/null 2>&1; then
+                    echo "$today" > "$cache_file"
+                fi
+            ) &!
+        fi
+    fi
+}
+_update_dotfiles
+
+# ===============================================================
 # 1. Powerlevel10k 即时响应 (保持在文件顶部)
 # ===============================================================
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
@@ -6,28 +32,51 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
 fi
 
 # ===============================================================
-# 2. 基础环境变量与路径设置
+# 2. 基础环境变量与系统识别
 # ===============================================================
-export PATH="$HOME/.local/bin:$PATH"
 export EDITOR='nvim'
-
-# 解决 Locale 警告，保持终端一致性
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 export LC_CTYPE=en_US.UTF-8
-
-# 开启终端真彩色支持
 export COLORTERM=truecolor
+
+# 路径设置 (通用)
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.devcontainers/bin:$PATH"
+
+# 系统特定初始化
+case "$(uname)" in
+    "Darwin")
+        # macOS Homebrew 初始化 (支持 Intel/Apple Silicon)
+        [[ -f /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
+        [[ -f /usr/local/bin/brew ]] && eval "$(/usr/local/bin/brew shellenv)"
+        
+        # macOS Docker Completions (Docker Desktop)
+        if [[ -d "/Applications/Docker.app/Contents/Resources/etc" ]]; then
+            fpath=(/Applications/Docker.app/Contents/Resources/etc $fpath)
+        fi
+        ;;
+    "Linux")
+        # Linux 专用补全路径 (如果手动安装了 docker-completions)
+        [[ -d "$HOME/.docker/completions" ]] && fpath=($HOME/.docker/completions $fpath)
+        
+        # GUI 环境变量 (仅在 Linux 桌面环境下)
+        if [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" ]]; then
+            export QT_QPA_PLATFORMTHEME=kvantum
+            export QT_STYLE_OVERRIDE=kvantum
+            export XDG_CURRENT_DESKTOP=niri
+            export QT_AUTO_SCREEN_SCALE_FACTOR=1
+            export QT_QPA_PLATFORM="wayland;xcb"
+        fi
+        ;;
+esac
 
 # ===============================================================
 # 3. Oh My Zsh 核心配置
 # ===============================================================
 export ZSH="$HOME/.oh-my-zsh"
-
-# 主题设置
 ZSH_THEME="powerlevel10k/powerlevel10k"
 
-# 插件列表
+# 基础插件
 plugins=(
     git 
     extract 
@@ -38,9 +87,11 @@ plugins=(
     poetry 
     you-should-use 
     history-substring-search 
-    command-not-found 
     fzf
 )
+
+# 仅在 Linux 上加载 command-not-found
+[[ "$(uname)" == "Linux" ]] && plugins+=(command-not-found)
 
 # 加载 Oh My Zsh
 source $ZSH/oh-my-zsh.sh
@@ -56,28 +107,22 @@ export NVM_DIR="$HOME/.nvm"
 
 # FZF 初始化与优化
 export FZF_DEFAULT_OPTS="-i --height 60% --layout reverse --border"
-source <(fzf --zsh)
+if command -v fzf >/dev/null; then
+    source <(fzf --zsh)
+fi
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
 # Poetry & Python 环境
 export UV_DEFAULT_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
 export OLLAMA_API_BASE=http://127.0.0.1:11434
 
-# Docker Completions
-fpath=(/Users/leen/.docker/completions $fpath)
+# 初始化补全系统
 autoload -Uz compinit && compinit
-
-# GUI 环境变量 (仅在有显示环境时)
-if [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" ]]; then
-    export QT_QPA_PLATFORMTHEME=kvantum
-    export QT_STYLE_OVERRIDE=kvantum
-fi
 
 # ===============================================================
 # 5. 别名设置 (Aliases)
 # ===============================================================
 
-# 通用别名
 alias vim="nvim"
 alias ssc='rm -f ~/.ssh/sockets/* && echo "SSH sockets cleared."'
 
@@ -97,7 +142,7 @@ alias pr="poetry run"
 alias pa="poetry add"
 alias pl="poetry lock"
 
-# 浏览器调试
+# 浏览器调试 (多系统适配)
 case "$(uname)" in
     "Darwin")
         alias chrome-dev='"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222 --user-data-dir="$HOME/Library/Application Support/Google/Chrome-Debug" --lang=zh-CN'
@@ -125,14 +170,14 @@ proxy() {
 }
 alias proxy='proxy '
 
-# SSH 增强与 FZF 选择器
+# SSH 增强
 ssh() {
     local target="$1"
     if [[ "$target" == "aliyun" || "$target" == "aaliyun" ]]; then
         if ! (ssh -O check aliyun 2>/dev/null && ssh -q -o ConnectTimeout=1 aliyun true 2>/dev/null); then
             ssh -O exit aliyun 2>/dev/null
             echo "1Password 正在准备 OTP..."
-            $HOME/.local/bin/ali.exp
+            [[ -f "$HOME/.local/bin/ali.exp" ]] && "$HOME/.local/bin/ali.exp"
             sleep 0.5
         fi
         [[ "$target" == "aaliyun" ]] && target="aliyun"
@@ -147,10 +192,10 @@ ssh() {
 
 s() {
     local config_file="$HOME/.ssh/config"
-    [ ! -f "$config_file" ] && return 1
+    [[ ! -f "$config_file" ]] && return 1
     local target=$(grep -i "^Host " "$config_file" | awk '{print $2}' | grep -v "\*" | fzf \
         --height 40% --reverse --border --header "Select SSH Host")
-    [ -n "$target" ] && ssh "$target"
+    [[ -n "$target" ]] && ssh "$target"
 }
 
 # FZF SSH Widget (空格键触发)
@@ -182,15 +227,12 @@ imgcat() {
   fi
 }
 
-# 快捷键绑定
 bindkey '^l' autosuggest-accept
 
 # ===============================================================
 # 7. 外部配置加载 (放在最后以确保覆盖)
 # ===============================================================
 
-# 加载私密变量 (如 API Keys)
 [[ -f ~/.zshrc_secret ]] && source ~/.zshrc_secret
-
-# 加载 Powerlevel10k 样式配置
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+[[ -f ~/.zshrc_niri ]] && source ~/.zshrc_niri
+[[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh

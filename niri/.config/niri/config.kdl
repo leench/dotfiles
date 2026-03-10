@@ -281,6 +281,7 @@ overview {
 // This line starts waybar, a commonly used bar for Wayland compositors.
 spawn-sh-at-startup "eval $(gnome-keyring-daemon --start --components=secrets,ssh); dbus-update-activation-environment --all; systemctl --user import-environment"
 spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "1password" "--silent"
+spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "clash-verge" "--minimized"
 spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "/home/niri/hid-host-gui" "--tray"
 spawn-at-startup "vicinae" "server"
 spawn-at-startup "mako"
@@ -520,9 +521,12 @@ binds {
     // Mod+Up    { focus-window-up; }
     // Mod+Right { focus-column-right; }
     Mod+H     { focus-column-left; }
-    Mod+J     { focus-window-down; }
-    Mod+K     { focus-window-up; }
+    Mod+Alt+J { focus-window-down; }
+    Mod+Alt+K { focus-window-up; }
     Mod+L     { focus-column-right; }
+
+    Mod+J     { focus-workspace-down; }
+    Mod+K     { focus-workspace-up; }
 
     // Mod+Ctrl+Left  { move-column-left; }
     // Mod+Ctrl+Down  { move-window-down; }
