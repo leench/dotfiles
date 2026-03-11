@@ -182,6 +182,46 @@ imgcat() {
   fi
 }
 
+# 远程开发同步函数
+function dev-sync() {
+    if ! command -v fswatch &> /dev/null; then
+        echo "❌ 错误: 未检测到 fswatch"
+        return 1
+    fi
+
+    if [ "$#" -ne 2 ]; then
+        echo "💡 用法: dsync [本地路径] [远程别名:远程路径]"
+        return 1
+    fi
+
+    local local_path=$1
+    local remote_path=$2
+
+    # 核心安全检查：如果本地目录是空的，拒绝同步
+    if [ ! -d "$local_path" ] || [ -z "$(ls -A "$local_path")" ]; then
+        echo "⚠️ 警告: 本地路径不存在或为空，为保护远程数据，已中止同步。"
+        return 1
+    fi
+
+    echo "🚀 安全同步启动: $local_path -> $remote_path"
+    echo "提示：已禁用 --delete 参数，远程文件现在是安全的。"
+
+    # 安全的同步命令：去掉了 --delete
+    # 这样即使本地出问题，也只会“增加/覆盖”远程，绝不会“删除”远程原有文件
+    rsync -avz \
+        --exclude '.git/' \
+        --exclude '.DS_Store' \
+        "$local_path/" "$remote_path"
+
+    fswatch -o "$local_path" | while read num; do
+        rsync -avz "$local_path/" "$remote_path"
+        echo "✅ 已同步: $(date +%H:%M:%S)"
+    done
+}
+
+# 设置一个更短的别名
+alias dsync='dev-sync'
+
 # 快捷键绑定
 bindkey '^l' autosuggest-accept
 
