@@ -60,3 +60,16 @@ map("n", "<leader>B", function()
     end
   end)
 end, { desc = "Backup current file" })
+
+-- 🐍 Python: 清理未使用的导入 (需要 pip install ruff)
+map("n", "<leader>ri", function()
+  if vim.bo.filetype ~= "python" then
+    print("❌ 仅支持 Python 文件")
+    return
+  end
+  local file = vim.api.nvim_buf_get_name(0)
+  -- F401 是 "imported but unused" 的规则代码
+  vim.cmd("silent !ruff check --select F401 --fix " .. vim.fn.shellescape(file))
+  vim.cmd("edit!")
+  print("✨ 已通过 Ruff 清理未使用的导入")
+end, { desc = "Remove unused Python imports (Ruff)" })

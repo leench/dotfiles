@@ -177,6 +177,27 @@ proxy() {
 }
 alias proxy='proxy '
 
+# SSH 代理转发 (本地 7890 -> 远程 7890)
+# 使用方法: sshp user@remote_ip
+sshp() {
+    if [ -z "$1" ]; then
+        echo "用法: sshp user@remote_ip [额外参数]"
+        return 1
+    fi
+    
+    # -R 7890:localhost:7890 将远程 7890 端口转发到本地 7890
+    # -t 强制分配伪终端以便在登录后执行命令并保持交互
+    # 自动设置常用代理环境变量
+    command ssh -R 7890:localhost:7890 -t "$@" "
+        export http_proxy=http://127.0.0.1:7890;
+        export https_proxy=http://127.0.0.1:7890;
+        export all_proxy=socks5://127.0.0.1:7890;
+        export ALL_PROXY=socks5://127.0.0.1:7890;
+        echo '🚀 远程代理已通过 SSH 隧道挂载至本地 7890 端口 (http/https/socks5)';
+        exec \$SHELL -l
+    "
+}
+
 # SSH 增强
 ssh() {
     local target="$1"
