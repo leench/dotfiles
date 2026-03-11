@@ -7,3 +7,11 @@ window-rule {
     opacity 0.90
     open-floating true
 }
+
+// @id=wr_1773069598195049960 @name=org.gnome.FileRoller
+window-rule {
+    match app-id="^org.gnome.FileRoller$"
+    open-floating true
+    default-column-width { fixed 800; }
+    default-window-height { fixed 600; }
+}

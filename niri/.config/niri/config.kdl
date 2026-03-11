@@ -279,7 +279,9 @@ overview {
 // See the binds section below for more spawn examples.
 
 // This line starts waybar, a commonly used bar for Wayland compositors.
+spawn-sh-at-startup "eval $(gnome-keyring-daemon --start --components=secrets,ssh); dbus-update-activation-environment --all; systemctl --user import-environment"
 spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "1password" "--silent"
+spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "clash-verge" "--minimized"
 spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "/home/niri/hid-host-gui" "--tray"
 spawn-at-startup "vicinae" "server"
 spawn-at-startup "mako"
@@ -288,6 +290,7 @@ spawn-at-startup "mpd"
 // spawn-at-startup "env" "LC_ALL=en_US.UTF-8" "waybar"
 // spawn-at-startup "sh" "-c" "export LANG=zh_CN.UTF-8; dms"
 spawn-sh-at-startup "LANG=zh_CN.UTF-8 dms run"
+// spawn-at-startup "qs" "-c" "noctalia-shell" "--no-duplicate"
 spawn-at-startup "/usr/lib/polkit-kde-authentication-agent-1"
 
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
@@ -360,14 +363,35 @@ window-rule {
     open-floating true
 }
 
+// RetroArch: always open as floating with a practical 16:9 size
+window-rule {
+    match app-id=r#"^retroarch$"#
+    match app-id=r#"^org\.libretro\.RetroArch$"#
+    match app-id=r#"^com\.libretro\.RetroArch$"#
+    open-floating true
+    default-column-width { fixed 1200; }
+    default-window-height { fixed 800; }
+}
+
 // TUI Apps floating rules
 window-rule {
     match title=r#"^impala$"#
     match title=r#"^bluetui$"#
-    match title=r#"^rmpc$"#
     open-floating true
     default-column-width { fixed 1200; }
     default-window-height { fixed 750; }
+}
+
+window-rule {
+    match title=r#"^rmpc$"#
+    open-floating true
+    default-column-width { fixed 1400; }
+    default-window-height { fixed 900; }
+    focus-ring {
+        width 1
+        active-color "#203060"
+        inactive-color "#101010"
+    }
 }
 
 window-rule {
@@ -454,7 +478,7 @@ binds {
     // TUI Applications
     Mod+Alt+W hotkey-overlay-title="Wifi: impala" { spawn "kitty" "--title" "impala" "sh" "-c" "impala || (echo 'Impala exited with error. Press Enter...'; read)"; }
     Mod+Alt+B hotkey-overlay-title="Bluetooth: bluetui" { spawn "kitty" "--title" "bluetui" "sh" "-c" "bluetui || (echo 'Bluetui exited with error. Press Enter...'; read)"; }
-    Mod+Alt+M hotkey-overlay-title="Music: rmpc" { spawn "kitty" "--title" "rmpc" "rmpc"; }
+    Mod+Alt+M hotkey-overlay-title="Music: rmpc" { spawn "kitty" "--title" "rmpc" "-o" "font_size=9" "-o" "background_opacity=0.7" "-o" "window_padding_width=0" "-o" "hide_window_decorations=yes" "-o" "tab_bar_style=hidden" "-o" "tab_bar_min_tabs=2" "rmpc"; }
 
     Super+Alt+L hotkey-overlay-title="Lock the Screen: swaylock" { spawn "swaylock"; }
 
@@ -497,9 +521,12 @@ binds {
     // Mod+Up    { focus-window-up; }
     // Mod+Right { focus-column-right; }
     Mod+H     { focus-column-left; }
-    Mod+J     { focus-window-down; }
-    Mod+K     { focus-window-up; }
+    Mod+Alt+J { focus-window-down; }
+    Mod+Alt+K { focus-window-up; }
     Mod+L     { focus-column-right; }
+
+    Mod+J     { focus-workspace-down; }
+    Mod+K     { focus-workspace-up; }
 
     // Mod+Ctrl+Left  { move-column-left; }
     // Mod+Ctrl+Down  { move-window-down; }
@@ -563,9 +590,9 @@ binds {
 
     // Mouse Wheel Bindings
     
-    // Mod + Scroll: Scroll through windows in current workspace
-    Mod+WheelScrollDown      cooldown-ms=150 { focus-column-right; }
-    Mod+WheelScrollUp        cooldown-ms=150 { focus-column-left; }
+    // Mod + Scroll: Adjust window width
+    Mod+WheelScrollDown      cooldown-ms=150 { set-column-width "-5%"; }
+    Mod+WheelScrollUp        cooldown-ms=150 { set-column-width "+5%"; }
 
     // Mod + Ctrl + Scroll: Switch workspaces
     Mod+Ctrl+WheelScrollDown cooldown-ms=150 { focus-workspace-down; }
