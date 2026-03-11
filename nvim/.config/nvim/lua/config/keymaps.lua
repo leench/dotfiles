@@ -60,3 +60,26 @@ map("n", "<leader>B", function()
     end
   end)
 end, { desc = "Backup current file" })
+
+-- 定义一个函数来运行你的 TUI
+local function run_atui()
+  -- 替换为你 TUI 的实际命令和固定目录
+  local cmd = "atui" 
+  local dir = "/webprojects/gzstv/GZSTVSite/ansible/"
+
+  -- 调用 Snacks 开启浮窗终端
+  Snacks.terminal.open(cmd, {
+    cwd = vim.fn.expand(dir),
+    interactive = true,
+    -- 这里的 style 可以匹配 LazyVim 的浮窗风格
+    win = {
+      style = "float",
+      border = "rounded",
+      width = 0.9,
+      height = 0.9,
+    },
+  })
+end
+
+-- 设置快捷键，例如 <leader>ty (tui yours)
+vim.keymap.set("n", "<leader>dj", run_atui, { desc = "Ansible Tui" })
