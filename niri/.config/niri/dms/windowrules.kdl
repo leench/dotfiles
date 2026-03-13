@@ -4,7 +4,7 @@
 // @id=wr_1771687872353053518 @name=1password
 window-rule {
     match app-id="^1password$"
-    opacity 0.90
+    opacity 1.0
     open-floating true
 }
 
