@@ -309,4 +309,5 @@ bindkey '^l' autosuggest-accept
 
 [[ -f ~/.zshrc_secret ]] && source ~/.zshrc_secret
 [[ -f ~/.zshrc_niri ]] && source ~/.zshrc_niri
+[[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
 [[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
