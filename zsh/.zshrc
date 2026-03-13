@@ -198,6 +198,11 @@ sshp() {
     "
 }
 
+# 二次ssh
+sshr() {
+  TERM=xterm-256color command ssh "$@"
+}
+
 # SSH 增强
 ssh() {
     local target="$1"
