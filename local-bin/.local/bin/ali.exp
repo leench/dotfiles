@@ -1,0 +1,45 @@
+#!/usr/bin/env expect -f
+
+# --- 配置区 ---
+# 替换为你在 1Password 中找到的条目 ID
+set op_id "cuuehvgv4d7bmktaotrnkdkiae"
+# --- --- --- ---
+
+proc get_otp {} {
+    global op_id otp
+    if {[info exists otp] && $otp ne ""} {
+        return $otp
+    }
+
+    # 仅在远端实际要求 OTP 时才访问 1Password。
+    set otp [string trim [exec op item get $op_id --otp]]
+    return $otp
+}
+
+# 2. 发起 SSH 连接并在认证完成后直接后台化，不进入交互 shell
+spawn /usr/bin/ssh -N -f -o ControlMaster=yes aliyun
+
+# 3. 自动交互匹配
+expect {
+    "Password:" {
+        send "你的固定密码\r"
+        exp_continue
+    }
+    "Verification code:" {
+        send "[get_otp]\r"
+        exp_continue
+    }
+    "OTP:" {
+        send "[get_otp]\r"
+        exp_continue
+    }
+    "Please Input Mfa Code (OTP):" {
+        send "[get_otp]\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    eof
+}
