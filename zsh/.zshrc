@@ -19,6 +19,9 @@ export LC_CTYPE=en_US.UTF-8
 # 开启终端真彩色支持
 export COLORTERM=truecolor
 
+# 禁用 Kitty 的 ssh 别名/集成
+export KITTY_SHELL_INTEGRATION="no-ssh"
+
 # ===============================================================
 # 3. Oh My Zsh 核心配置
 # ===============================================================
@@ -138,7 +141,8 @@ ssh() {
         [[ "$target" == "aaliyun" ]] && target="aliyun"
     fi
 
-    command ssh "$target" "${@:2}"
+    # 强制使用 xterm-256color 以确保远程兼容性
+    TERM=xterm-256color command ssh "$target" "${@:2}"
 }
 
 s() {
@@ -191,3 +195,6 @@ bindkey '^l' autosuggest-accept
 # 加载 Powerlevel10k 样式配置
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 [[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
+
+# 确保不使用 kitten ssh (禁用别名)
+unalias ssh 2>/dev/null
