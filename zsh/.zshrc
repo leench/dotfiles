@@ -131,10 +131,9 @@ alias proxy='proxy '
 # SSH 增强与 FZF 选择器
 ssh() {
     local target="$1"
-    if [[ "$target" == "aliyun" || "$target" == "aaliyun" ]]; then
+    if [[ "$target" == "aliyun" ]]; then
         if ! (ssh -O check aliyun 2>/dev/null && ssh -q -o ConnectTimeout=1 aliyun true 2>/dev/null); then
             ssh -O exit aliyun 2>/dev/null
-            echo "1Password 正在准备 OTP..."
             $HOME/.local/bin/ali.exp
             sleep 0.5
         fi
