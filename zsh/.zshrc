@@ -1,4 +1,62 @@
 # ===============================================================
+# 0. Dotfiles 自动更新 (每日检查)
+# 必须放在 p10k instant prompt 之前以避免 [WARNING]
+# ===============================================================
+_update_dotfiles() {
+    local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}"
+    local cache_file="$cache_dir/dotfiles_update_check"
+    local today=$(date +%Y-%m-%d)
+
+    # 每天只检查一次更新
+    if [[ ! -f "$cache_file" || "$(cat "$cache_file")" != "$today" ]]; then
+        if [[ -d ~/dotfiles/.git ]]; then
+            # 脏检查：如果有未提交的改动，进行提醒
+            if [[ -n $(git -C ~/dotfiles status --porcelain) ]]; then
+                echo -e "\033[0;33m检测到 dotfiles 有未提交的本地更改，请记得处理。\033[0m"
+            fi
+
+            echo "正在检查 dotfiles 远程更新..."
+            # 尝试获取远程状态 (设置较短的超时以防网络问题挂起)
+            if command -v timeout &> /dev/null; then
+                timeout 5 git -C ~/dotfiles fetch --quiet origin main 2>/dev/null
+            else
+                git -C ~/dotfiles fetch --quiet origin main 2>/dev/null
+            fi
+
+            local remote_updates=$(git -C ~/dotfiles rev-list HEAD..origin/main 2>/dev/null)
+            if [[ -n "$remote_updates" ]]; then
+                echo -e "\n\033[0;32m✨ 发现 dotfiles 远程更新！\033[0m"
+                echo "------------------------------------------------"
+                echo "变更文件："
+                git -C ~/dotfiles diff --name-status HEAD..origin/main
+                echo "------------------------------------------------"
+                echo "最新提交："
+                git -C ~/dotfiles log HEAD..origin/main --oneline -n 5
+                echo "------------------------------------------------"
+                
+                # 使用 zsh 内置的 read -q 进行确认 (y/n)
+                if read -q "choice?是否现在拉取更新? (y/n) "; then
+                    echo -e "\n\n正在更新 (git pull --rebase --autostash)..."
+                    if git -C ~/dotfiles pull --rebase --autostash origin main; then
+                        echo -e "\033[0;32m✅ 更新成功！\033[0m"
+                        echo "$today" > "$cache_file"
+                    else
+                        echo -e "\033[0;31m❌ 更新失败，请尝试手动解决冲突。\033[0m"
+                    fi
+                else
+                    echo -e "\n\033[0;34m已跳过更新，今日不再提醒。\033[0m"
+                    echo "$today" > "$cache_file"
+                fi
+            else
+                # 没有更新，标记今日已检查
+                echo "$today" > "$cache_file"
+            fi
+        fi
+    fi
+}
+_update_dotfiles
+
+# ===============================================================
 # 1. Powerlevel10k 即时响应 (保持在文件顶部)
 # ===============================================================
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
