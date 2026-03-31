@@ -4,7 +4,7 @@
 // @id=wr_1771687872353053518 @name=1password
 window-rule {
     match app-id="^1password$"
-    opacity 1.0
+    opacity 1.00
     open-floating true
 }
 
@@ -14,4 +14,16 @@ window-rule {
     open-floating true
     default-column-width { fixed 800; }
     default-window-height { fixed 600; }
+}
+
+// @id=wr_1773933917368684126 @name=org.deskflow.deskflow
+window-rule {
+    match app-id="^org.deskflow.deskflow$"
+    open-floating true
+}
+
+// @id=wr_1773934786677009277 @name=de.feschber.LanMouse
+window-rule {
+    match app-id="^de.feschber.LanMouse$"
+    open-floating true
 }

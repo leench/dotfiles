@@ -286,10 +286,11 @@ spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "/home/niri/hid-host-gui" "--
 spawn-at-startup "vicinae" "server"
 spawn-at-startup "mako"
 spawn-at-startup "mpd"
+spawn-at-startup "lan-mouse" "daemon"
 // spawn-at-startup "/home/niri/.local/bin/random_wallpaper.sh"
 // spawn-at-startup "env" "LC_ALL=en_US.UTF-8" "waybar"
 // spawn-at-startup "sh" "-c" "export LANG=zh_CN.UTF-8; dms"
-spawn-sh-at-startup "LANG=zh_CN.UTF-8 dms run"
+spawn-sh-at-startup "DMS_DISABLE_LAYER=1 LANG=zh_CN.UTF-8 dms run"
 // spawn-at-startup "qs" "-c" "noctalia-shell" "--no-duplicate"
 spawn-at-startup "/usr/lib/polkit-kde-authentication-agent-1"
 spawn-at-startup "xhost" "+si:localuser:root"
@@ -347,6 +348,12 @@ window-rule {
     match app-id=r#"^kitty$"#
     default-column-width { proportion 0.5; }
     draw-border-with-background false
+}
+
+// WeChat 浮动规则：仅开启默认浮动
+window-rule {
+    match app-id="wechat"
+    open-floating true
 }
 
 window-rule {
@@ -471,15 +478,15 @@ binds {
     Mod+Shift+Slash { show-hotkey-overlay; }
 
     // Suggested binds for running programs: terminal, app launcher, screen locker.
-    Mod+T hotkey-overlay-title="Open a Terminal: kitty" { spawn "kitty"; }
+    Mod+T hotkey-overlay-title="Open a Terminal: kitty" { spawn "env" "LC_ALL=en_US.UTF-8" "kitty"; }
     Mod+N hotkey-overlay-title="Toggle Scratchpad" { spawn-sh "/home/niri/.local/bin/toggle-scratchpad"; }
     Mod+D hotkey-overlay-title="Run an Application: vicinae" { spawn "vicinae" "toggle"; }
     Mod+Shift+D hotkey-overlay-title="Show Desktop (Switch to Workspace 9)" { focus-workspace 9; }
     
     // TUI Applications
-    Mod+Alt+W hotkey-overlay-title="Wifi: impala" { spawn "kitty" "--title" "impala" "sh" "-c" "impala || (echo 'Impala exited with error. Press Enter...'; read)"; }
-    Mod+Alt+B hotkey-overlay-title="Bluetooth: bluetui" { spawn "kitty" "--title" "bluetui" "sh" "-c" "bluetui || (echo 'Bluetui exited with error. Press Enter...'; read)"; }
-    Mod+Alt+M hotkey-overlay-title="Music: rmpc" { spawn "kitty" "--title" "rmpc" "-o" "font_size=9" "-o" "background_opacity=0.7" "-o" "window_padding_width=0" "-o" "hide_window_decorations=yes" "-o" "tab_bar_style=hidden" "-o" "tab_bar_min_tabs=2" "rmpc"; }
+    Mod+Alt+W hotkey-overlay-title="Wifi: impala" { spawn "env" "LC_ALL=en_US.UTF-8" "kitty" "--title" "impala" "sh" "-c" "impala || (echo 'Impala exited with error. Press Enter...'; read)"; }
+    Mod+Alt+B hotkey-overlay-title="Bluetooth: bluetui" { spawn "env" "LC_ALL=en_US.UTF-8" "kitty" "--title" "bluetui" "sh" "-c" "bluetui || (echo 'Bluetui exited with error. Press Enter...'; read)"; }
+    Mod+Alt+M hotkey-overlay-title="Music: rmpc" { spawn "env" "LC_ALL=en_US.UTF-8" "kitty" "--title" "rmpc" "-o" "font_size=9" "-o" "background_opacity=0.7" "-o" "window_padding_width=0" "-o" "hide_window_decorations=yes" "-o" "tab_bar_style=hidden" "-o" "tab_bar_min_tabs=2" "rmpc"; }
 
     Super+Alt+L hotkey-overlay-title="Lock the Screen: swaylock" { spawn "swaylock"; }
 
@@ -707,11 +714,14 @@ binds {
     // Mod+Space       { switch-layout "next"; }
     // Mod+Shift+Space { switch-layout "prev"; }
 
-    // Screenshots (40% friendly)
-    Mod+Shift+S { screenshot; }
+    // Screenshots (40% friendly - grim/slurp/swappy)
+    // 选区截图：保存文件 + 复制图片(Ctrl+V) + 复制路径(中键粘贴) + 发送通知
+    Mod+S { spawn "bash" "-c" "filepath=\"$HOME/Pictures/Screenshots/Screenshot_$(date +'%Y-%m-%d_%H-%M-%S').png\"; grim -g \"$(slurp)\" \"$filepath\" && { wl-copy < \"$filepath\"; echo \"$filepath\" | wl-copy --primary; notify-send \"截图已保存\" \"$filepath\" -i \"$filepath\"; }"; }
+    // 选区截图并编辑：使用 swappy，编辑后可手动点击保存或复制
+    Mod+Shift+S { spawn "bash" "-c" "grim -g \"$(slurp)\" - | swappy -f -"; }
+    // 全屏截图 (Niri 内置)
+    Mod+Alt+S { screenshot; }
     Mod+Shift+Alt+S { screenshot-window; }
-    // Ctrl+Print { screenshot-screen; }
-    // Alt+Print { screenshot-window; }
 
     // Applications such as remote-desktop clients and software KVM switches may
     // request that niri stops processing the keyboard shortcuts defined here
@@ -721,7 +731,8 @@ binds {
     //
     // The allow-inhibiting=false property can be applied to other binds as well,
     // which ensures niri always processes them, even when an inhibitor is active.
-    Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
+    // Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
+    Mod+Escape { toggle-keyboard-shortcuts-inhibit; }
 
     // The quit action will show a confirmation dialog to avoid accidental exits.
     Mod+Shift+E { quit; }

@@ -1,4 +1,4 @@
-#!/usr/bin/env expect -f
+#!/usr/bin/env expect
 
 # --- 配置区 ---
 # 替换为你在 1Password 中找到的条目 ID
@@ -21,10 +21,6 @@ spawn /usr/bin/ssh -N -f -o ControlMaster=yes aliyun
 
 # 3. 自动交互匹配
 expect {
-    "Password:" {
-        send "你的固定密码\r"
-        exp_continue
-    }
     "Verification code:" {
         send "[get_otp]\r"
         exp_continue
