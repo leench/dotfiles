@@ -4,3 +4,5 @@ zsh/.zshrc_secret
 nvim/.config/nvim/lazy-lock.json
 niri/.config/niri/dms/colors.kdl
 zsh/.zprofile
+niri/.config/niri/dms/colors.kdl
+wezterm/.config/wezterm/colors/dank-theme.toml
