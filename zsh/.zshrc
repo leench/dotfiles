@@ -18,7 +18,7 @@ _update_dotfiles() {
             echo "正在检查 dotfiles 远程更新..."
             # 尝试获取远程状态 (设置较短的超时以防网络问题挂起)
             if command -v timeout &> /dev/null; then
-                timeout 5 git -C ~/dotfiles fetch --quiet origin main 2>/dev/null
+                timeout 10 git -C ~/dotfiles fetch --quiet origin main 2>/dev/null
             else
                 git -C ~/dotfiles fetch --quiet origin main 2>/dev/null
             fi
