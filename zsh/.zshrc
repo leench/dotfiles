@@ -139,6 +139,16 @@ fi
 # ===============================================================
 
 # 通用别名
+if command -v lsd >/dev/null 2>&1; then
+    alias ls='lsd'
+    alias ll='lsd -l'
+    alias la='lsd -a'
+    alias lla='lsd -la'
+    alias lt='lsd --tree'
+else
+    alias ll='ls -lh'
+    alias la='ls -A'
+fi
 alias vim="nvim"
 alias ssc='rm -f ~/.ssh/sockets/* && echo "SSH sockets cleared."'
 alias update_df='_update_dotfiles'
