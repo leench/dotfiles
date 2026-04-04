@@ -17,7 +17,7 @@ _update_dotfiles() {
 
     # 脏检查：如果有未提交的改动，进行提醒
     if [[ -n $(git -C "$dotfiles_dir" status --porcelain) ]]; then
-        echo -e "\033[0;33m⚠️  检测到 dotfiles 有未提交的本地更改，请记得处理。\033[0m"
+        echo -e "\033[0;33m[!] 检测到 dotfiles 有未提交的本地更改，请记得处理。\033[0m"
     fi
 
     echo "正在检查 dotfiles 远程更新..."
@@ -42,13 +42,13 @@ _update_dotfiles() {
 
     # 如果 fetch 失败（例如断网），打印错误并退出
     if [[ $fetch_status -ne 0 ]]; then
-        echo -e "\033[0;31m❌ 检查失败 (网络超时或仓库权限问题)。\033[0m"
+        echo -e "\033[0;31m[ERROR] 检查失败 (网络超时或仓库权限问题)。\033[0m"
         return
     fi
 
     local remote_updates=$(git -C "$dotfiles_dir" rev-list HEAD..origin/main 2>/dev/null)
     if [[ -n "$remote_updates" ]]; then
-        echo -e "\n\033[0;32m✨ 发现 dotfiles 远程更新！\033[0m"
+        echo -e "\n\033[0;32m[UPDATE] 发现 dotfiles 远程更新！\033[0m"
         echo "------------------------------------------------"
         git -C "$dotfiles_dir" --no-pager log HEAD..origin/main --oneline --graph --decorate
         echo "------------------------------------------------"
@@ -58,10 +58,10 @@ _update_dotfiles() {
         if [[ -z "$choice" || "$choice" == [yY]* ]]; then
             echo -e "正在更新 (git pull --rebase --autostash)..."
             if git -C "$dotfiles_dir" pull --rebase --autostash origin main; then
-                echo -e "\033[0;32m✅ 更新成功！\033[0m"
+                echo -e "\033[0;32m[OK] 更新成功！\033[0m"
                 echo "$today" > "$cache_file"
             else
-                echo -e "\n\033[0;31m❌ 更新失败，请尝试手动解决冲突。\033[0m"
+                echo -e "\n\033[0;31m[ERROR] 更新失败，请尝试手动解决冲突。\033[0m"
             fi
         else
             echo -e "\n\033[0;34m已跳过更新，今日不再提醒。\033[0m"
@@ -69,7 +69,7 @@ _update_dotfiles() {
         fi
     else
         # 成功检查且没有更新
-        echo -e "\033[0;32m✅ dotfiles 已是最新。\033[0m"
+        echo -e "\033[0;32m[OK] dotfiles 已是最新。\033[0m"
         echo "$today" > "$cache_file"
     fi
 }
@@ -171,12 +171,11 @@ fi
 if command -v lsd >/dev/null 2>&1; then
     alias ls='lsd'
     alias ll='lsd -l'
-    alias la='lsd -a'
-    alias lla='lsd -la'
+    alias la='lsd -la'
     alias lt='lsd --tree'
 else
     alias ll='ls -lh'
-    alias la='ls -A'
+    alias la='ls -lA'
 fi
 alias vim="nvim"
 alias ssc='rm -f ~/.ssh/sockets/* && echo "SSH sockets cleared."'
