@@ -6,52 +6,71 @@ _update_dotfiles() {
     local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}"
     local cache_file="$cache_dir/dotfiles_update_check"
     local today=$(date +%Y-%m-%d)
+    local dotfiles_dir="$HOME/dotfiles"
 
-    # 每天只检查一次更新
-    if [[ ! -f "$cache_file" || "$(cat "$cache_file")" != "$today" ]]; then
-        if [[ -d ~/dotfiles/.git ]]; then
-            # 脏检查：如果有未提交的改动，进行提醒
-            if [[ -n $(git -C ~/dotfiles status --porcelain) ]]; then
-                echo -e "\033[0;33m检测到 dotfiles 有未提交的本地更改，请记得处理。\033[0m"
-            fi
+    # 检查缓存：如果今天已经检查过且成功了，则跳过 (除非传入了 --force)
+    if [[ "$1" != "--force" ]]; then
+        [[ -f "$cache_file" && "$(cat "$cache_file")" == "$today" ]] && return
+    fi
 
-            echo "正在检查 dotfiles 远程更新..."
-            # 尝试获取远程状态 (设置较短的超时以防网络问题挂起)
-            if command -v timeout &> /dev/null; then
-                timeout 15 git -C ~/dotfiles fetch origin main 2>/dev/null
-            else
-                git -C ~/dotfiles fetch --quiet origin main 2>/dev/null
-            fi
+    [[ ! -d "$dotfiles_dir/.git" ]] && return
 
-            local remote_updates=$(git -C ~/dotfiles rev-list HEAD..origin/main 2>/dev/null)
-            if [[ -n "$remote_updates" ]]; then
-                echo -e "\n\033[0;32m✨ 发现 dotfiles 远程更新！\033[0m"
-                echo "------------------------------------------------"
-                echo "变更文件："
-                git -C ~/dotfiles diff --name-status HEAD..origin/main
-                echo "------------------------------------------------"
-                echo "最新提交："
-                git -C ~/dotfiles log HEAD..origin/main --oneline -n 5
-                echo "------------------------------------------------"
-                
-                # 使用 zsh 内置的 read -q 进行确认 (y/n)
-                if read -q "choice?是否现在拉取更新? (y/n) "; then
-                    echo -e "\n\n正在更新 (git pull --rebase --autostash)..."
-                    if git -C ~/dotfiles pull --rebase --autostash origin main; then
-                        echo -e "\033[0;32m✅ 更新成功！\033[0m"
-                        echo "$today" > "$cache_file"
-                    else
-                        echo -e "\033[0;31m❌ 更新失败，请尝试手动解决冲突。\033[0m"
-                    fi
-                else
-                    echo -e "\n\033[0;34m已跳过更新，今日不再提醒。\033[0m"
-                    echo "$today" > "$cache_file"
-                fi
-            else
-                # 没有更新，标记今日已检查
+    # 脏检查：如果有未提交的改动，进行提醒
+    if [[ -n $(git -C "$dotfiles_dir" status --porcelain) ]]; then
+        echo -e "\033[0;33m⚠️  检测到 dotfiles 有未提交的本地更改，请记得处理。\033[0m"
+    fi
+
+    echo "正在检查 dotfiles 远程更新..."
+    
+    # 确定超时命令 (macOS 通常用 gtimeout)
+    local timeout_cmd=""
+    if command -v timeout &>/dev/null; then
+        timeout_cmd="timeout"
+    elif command -v gtimeout &>/dev/null; then
+        timeout_cmd="gtimeout"
+    fi
+
+    # 尝试 fetch
+    local fetch_status=1
+    if [[ -n "$timeout_cmd" ]]; then
+        $timeout_cmd 10 git -C "$dotfiles_dir" fetch --quiet origin main 2>/dev/null
+        fetch_status=$?
+    else
+        git -C "$dotfiles_dir" fetch --quiet origin main 2>/dev/null
+        fetch_status=$?
+    fi
+
+    # 如果 fetch 失败（例如断网），打印错误并退出
+    if [[ $fetch_status -ne 0 ]]; then
+        echo -e "\033[0;31m❌ 检查失败 (网络超时或仓库权限问题)。\033[0m"
+        return
+    fi
+
+    local remote_updates=$(git -C "$dotfiles_dir" rev-list HEAD..origin/main 2>/dev/null)
+    if [[ -n "$remote_updates" ]]; then
+        echo -e "\n\033[0;32m✨ 发现 dotfiles 远程更新！\033[0m"
+        echo "------------------------------------------------"
+        git -C "$dotfiles_dir" --no-pager log HEAD..origin/main --oneline --graph --decorate
+        echo "------------------------------------------------"
+        
+        echo -n "是否现在拉取更新? [Y/n] "
+        read -r choice
+        if [[ -z "$choice" || "$choice" == [yY]* ]]; then
+            echo -e "正在更新 (git pull --rebase --autostash)..."
+            if git -C "$dotfiles_dir" pull --rebase --autostash origin main; then
+                echo -e "\033[0;32m✅ 更新成功！\033[0m"
                 echo "$today" > "$cache_file"
+            else
+                echo -e "\n\033[0;31m❌ 更新失败，请尝试手动解决冲突。\033[0m"
             fi
+        else
+            echo -e "\n\033[0;34m已跳过更新，今日不再提醒。\033[0m"
+            echo "$today" > "$cache_file"
         fi
+    else
+        # 成功检查且没有更新
+        echo -e "\033[0;32m✅ dotfiles 已是最新。\033[0m"
+        echo "$today" > "$cache_file"
     fi
 }
 _update_dotfiles
@@ -98,7 +117,6 @@ plugins=(
     zsh-syntax-highlighting 
     poetry 
     you-should-use 
-    history-substring-search 
     command-not-found 
     fzf
 )
@@ -119,6 +137,17 @@ export NVM_DIR="$HOME/.nvm"
 export FZF_DEFAULT_OPTS="-i --height 60% --layout reverse --border"
 source <(fzf --zsh)
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# 修复 macOS 下 Alt+c (ç) 无法触发 fzf-cd-widget 的问题
+bindkey 'ç' fzf-cd-widget
+# 确保上/下键只做前缀搜索 (Beginning Search)
+autoload -Uz up-line-or-beginning-search down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+bindkey '^[[A' up-line-or-beginning-search
+bindkey '^[[B' down-line-or-beginning-search
+bindkey '\e[A' up-line-or-beginning-search
+bindkey '\e[B' down-line-or-beginning-search
 
 # Poetry & Python 环境
 export UV_DEFAULT_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
@@ -151,7 +180,7 @@ else
 fi
 alias vim="nvim"
 alias ssc='rm -f ~/.ssh/sockets/* && echo "SSH sockets cleared."'
-alias update_df='_update_dotfiles'
+alias update_df='_update_dotfiles --force'
 
 # Gemini 相关
 alias ge="gemini"
