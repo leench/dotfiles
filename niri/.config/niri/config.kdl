@@ -350,6 +350,13 @@ window-rule {
     draw-border-with-background false
 }
 
+// Ghostty 规则：允许半透明背景正常显示
+window-rule {
+    match app-id=r#"^com\.mitchellh\.ghostty$"#
+    default-column-width { proportion 0.5; }
+    draw-border-with-background false
+}
+
 // WeChat 浮动规则：仅开启默认浮动
 window-rule {
     match app-id="wechat"

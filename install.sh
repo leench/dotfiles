@@ -58,8 +58,8 @@ if ! command -v stow &> /dev/null; then
 fi
 
 # --- 3. 选择安装包 ---
-CORE_PACKAGES=(nvim zsh tmux ssh)
-GUI_PACKAGES=(kitty mpv niri waybar rmpc vicinae wezterm)
+CORE_PACKAGES=(nvim zsh tmux ssh lsd)
+GUI_PACKAGES=(kitty ghostty mpv niri waybar rmpc vicinae wezterm)
 SELECTED_PACKAGES=()
 
 echo -e "\n${BLUE}📦 Package Selection:${NC}"
