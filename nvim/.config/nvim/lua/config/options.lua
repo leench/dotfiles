@@ -13,6 +13,8 @@ local opt = vim.opt
 
 opt.backup = false
 opt.showmode = true
+opt.number = true -- 启用绝对行号
+opt.relativenumber = false -- 禁用相对行号
 opt.colorcolumn = "80"
 opt.shell = "/bin/zsh"
 opt.laststatus = 3 -- 全局状态栏
