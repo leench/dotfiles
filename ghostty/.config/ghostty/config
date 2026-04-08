@@ -3,19 +3,18 @@ font-family = "Noto Sans Mono"
 font-family = "Noto Sans Mono CJK SC"
 font-size = 10.5
 adjust-cell-height = 8
-font-codepoint-map = U+3400-U+4DBF,U+4E00-U+9FFF,U+F900-U+FAFF,U+20000-U+2A6DF,U+2A700-U+2B73F,U+2B740-U+2B81F,U+2B820-U+2CEAF,U+2F800-U+2FA1F=Noto Sans Mono CJK SC
+font-codepoint-map = Uj3400-U+4DBF,U+4E00-U+9FFF,U+F900-U+FAFF,U+20000-U+2A6DF,U+2A700-U+2B73F,U+2B740-U+2B81F,U+2B820-U+2CEAF,U+2F800-U+2FA1F=Noto Sans Mono CJK SC
 scrollback-limit = 10000000
 focus-follows-mouse = true
 shell-integration-features = no-cursor
 
 # --- 主题与透明度 ---
-theme = "Catppuccin Mocha"
+theme = Catppuccin Mocha
 background-opacity = 1.0
 background-opacity-cells = false
 background-blur = 0
 
-# --- 窗口装饰 ---
-window-decoration = none
+# --- 窗口装饰 (通用) ---
 window-padding-x = 4
 window-padding-y = 4
 confirm-close-surface = false
@@ -44,3 +43,9 @@ keybind = ctrl+v=paste_from_clipboard
 keybind = ctrl+shift+c=copy_to_clipboard:mixed
 keybind = ctrl+shift+v=paste_from_clipboard
 keybind = ctrl+shift+r=reload_config
+keybind = ctrl+alt+r=reload_config
+
+# --- 平台特定配置 ---
+# 注意：配置项在后加载的文件中会覆盖先加载的文件
+config-file = linux.conf
+config-file = macos.conf
