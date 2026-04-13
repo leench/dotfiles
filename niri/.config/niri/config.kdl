@@ -290,7 +290,7 @@ spawn-at-startup "lan-mouse" "daemon"
 // spawn-at-startup "/home/niri/.local/bin/random_wallpaper.sh"
 // spawn-at-startup "env" "LC_ALL=en_US.UTF-8" "waybar"
 // spawn-at-startup "sh" "-c" "export LANG=zh_CN.UTF-8; dms"
-spawn-sh-at-startup "DMS_DISABLE_LAYER=1 LANG=zh_CN.UTF-8 dms run"
+//spawn-sh-at-startup "DMS_DISABLE_LAYER=1 LANG=zh_CN.UTF-8 dms run"
 // spawn-at-startup "qs" "-c" "noctalia-shell" "--no-duplicate"
 spawn-at-startup "/usr/lib/polkit-kde-authentication-agent-1"
 spawn-at-startup "xhost" "+si:localuser:root"
@@ -335,6 +335,13 @@ animations {
 
 // Work around WezTerm's initial configure bug
 // by setting an empty default-column-width.
+// SyncClipboard scaling fix
+window-rule {
+    match app-id=r#"^SyncClipboard\.Desktop\.Default$"#
+    default-column-width { fixed 1200; }
+    default-window-height { fixed 1600; }
+}
+
 window-rule {
     // This regular expression is intentionally made as specific as possible,
     // since this is the default config, and we want no false positives.
