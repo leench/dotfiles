@@ -96,3 +96,16 @@ end
 
 -- 设置快捷键，例如 <leader>ty (tui yours)
 vim.keymap.set("n", "<leader>dj", run_atui, { desc = "Ansible Tui" })
+
+-- 复制当前文件路径
+map("n", "<leader>fy", function()
+  local path = vim.fn.expand("%")
+  vim.fn.setreg("+", path)
+  vim.notify("已复制相对路径: " .. path)
+end, { desc = "Copy Relative Path" })
+
+map("n", "<leader>fY", function()
+  local path = vim.fn.expand("%:p")
+  vim.fn.setreg("+", path)
+  vim.notify("已复制绝对路径: " .. path)
+end, { desc = "Copy Absolute Path" })
