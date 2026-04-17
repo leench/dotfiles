@@ -16,15 +16,21 @@ return {
       -- Use the "super-tab" preset which handles snippets and fallbacks correctly
       preset = "super-tab",
 
-      -- Explicitly map <Tab> and <S-Tab> to select next/previous items
+      -- Explicitly map <Tab> and <S-Tab> to select and accept or navigate
       ["<Tab>"] = {
-        "select_next", -- Select the next completion item or jump to the next snippet placeholder
+        function(cmp)
+          if cmp.is_visible() then
+            return cmp.select_and_accept()
+          end
+        end,
+        "snippet_forward",
+        "fallback",
       },
       ["<S-Tab>"] = {
-        "select_prev", -- Select the previous completion item or jump to the previous snippet placeholder
+        "select_prev",
+        "snippet_backward",
+        "fallback",
       },
-      -- Note: with "super-tab" preset, <Tab> automatically handles snippet forwarding, 
-      -- accepting AI suggestions (if applicable), and falling back to a regular tab.
     },
   },
 }
