@@ -9,7 +9,7 @@ return {
           style = "terminal",
           position = "float", -- 可改为 "right" 让它在右侧显示
           width = 0.85,
-          height = 0.8,        -- 占用屏幕高度的 30%
+          height = 0.8, -- 占用屏幕高度的 30%
           border = "single",
         },
         wo = {
@@ -27,6 +27,27 @@ return {
           border = "single",
         },
       },
+      explorer = {
+        win = {
+          list = {
+            keys = {
+              ["/"] = "edit_filter", -- 将 / 映射为局部过滤，而不是全局 picker
+            },
+          },
+        },
+      },
+      picker = {
+        sources = {
+          explorer = {
+            -- hidden = true,
+            ignored = true,
+          },
+          files = {
+            -- hidden = true, -- show dotfiles in fuzzy finder
+            ignored = true, -- optional: show gitignored files
+          },
+        },
+      },
     },
   },
   {
@@ -42,23 +63,6 @@ return {
             text = "File Explorer",
             highlight = "Directory",
             text_align = "left",
-          },
-        },
-      },
-    },
-  },
-  {
-    "folke/snacks.nvim",
-    opts = {
-      picker = {
-        sources = {
-          explorer = {
-            -- hidden = true,
-            ignored = true,
-          },
-          files = {
-            -- hidden = true, -- show dotfiles in fuzzy finder
-            ignored = true, -- optional: show gitignored files
           },
         },
       },
