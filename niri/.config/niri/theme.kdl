@@ -1,0 +1,12 @@
+layout {
+    focus-ring {
+        active-color "#7fc8ff"
+        inactive-color "#505050"
+        active-gradient from="#80c8ff" to="#c7ff7f" angle=45
+    }
+    border {
+        active-color "#7fc8ff"
+        inactive-color "#505050"
+        active-gradient from="#80c8ff" to="#c7ff7f" angle=45
+    }
+}
