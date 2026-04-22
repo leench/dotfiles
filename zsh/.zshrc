@@ -86,6 +86,12 @@ fi
 # 2. 基础环境变量与路径设置
 # ===============================================================
 export PATH="$HOME/.local/bin:$PATH"
+
+# OpenCode 路径 (仅当目录存在且不在 PATH 中时添加)
+if [[ -d "$HOME/.opencode/bin" && ":$PATH:" != *":$HOME/.opencode/bin:"* ]]; then
+    export PATH="$HOME/.opencode/bin:$PATH"
+fi
+
 export EDITOR='nvim'
 
 # 解决 Locale 警告，保持终端一致性
@@ -294,3 +300,10 @@ bindkey '^l' autosuggest-accept
 
 # 确保不使用 kitten ssh (禁用别名)
 unalias ssh 2>/dev/null
+
+# bun completions
+[ -s "/home/niri/.bun/_bun" ] && source "/home/niri/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
