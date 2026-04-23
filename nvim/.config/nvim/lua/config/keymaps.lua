@@ -10,6 +10,10 @@ map("n", "Q", ":q<cr>", { desc = "Quit" })
 map("n", "|", ":vsplit<CR>", { desc = "Split Vertical" })
 map("n", "-", ":split<CR>", { desc = "Split Horizontal" })
 
+-- 修改时不覆盖寄存器
+map({ "n", "x" }, "c", '"_c', { noremap = true })
+map({ "n", "x" }, "C", '"_C', { noremap = true })
+
 -- Buffer 操作 (LazyVim 默认自带，但保留你的习惯)
 map("n", "<S-l>", ":bnext<CR>")
 map("n", "<S-h>", ":bprevious<CR>")

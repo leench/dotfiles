@@ -193,7 +193,6 @@ alias ger="gemini --resume"
 alias gel="gemini --list-sessions"
 alias gea="gemini --ask"
 alias pge='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 gemini'
-alias pcodex='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 codex'
 alias pvim='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 nvim'
 
 # Poetry 常用命令
@@ -223,6 +222,7 @@ proxy() {
     export HTTPS_PROXY="http://127.0.0.1:7890"
     export ALL_PROXY="socks5://127.0.0.1:7890"
     export NO_PROXY="localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,*.local,*.internal"
+    export no_proxy="$NO_PROXY"
     if [ $# -eq 0 ]; then
         echo "Proxy environment variables set."
     else
