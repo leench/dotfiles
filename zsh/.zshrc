@@ -125,6 +125,7 @@ plugins=(
     you-should-use 
     command-not-found 
     fzf
+    docker
 )
 
 # 加载 Oh My Zsh
