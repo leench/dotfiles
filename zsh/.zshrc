@@ -186,7 +186,7 @@ else
 fi
 alias vim="nvim"
 alias ssc='rm -f ~/.ssh/sockets/* && echo "SSH sockets cleared."'
-alias update_df='_update_dotfiles --force'
+alias update_df='_update_dotfiles --force && exec zsh'
 
 # Gemini 相关
 alias ge="gemini"
