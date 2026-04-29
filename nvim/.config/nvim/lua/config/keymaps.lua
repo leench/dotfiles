@@ -103,13 +103,27 @@ vim.keymap.set("n", "<leader>dj", run_atui, { desc = "Ansible Tui" })
 
 -- 复制当前文件路径
 map("n", "<leader>fy", function()
-  local path = vim.fn.expand("%")
-  vim.fn.setreg("+", path)
-  vim.notify("已复制相对路径: " .. path)
+  local path = vim.api.nvim_buf_get_name(0)
+  if path == "" then
+    vim.notify("无有效文件路径", vim.log.levels.WARN)
+    return
+  end
+  local root = LazyVim.root()
+  local rel_path = vim.fn.fnamemodify(path, ":.")
+  -- 如果 fnamemodify 返回了绝对路径（说明不在 CWD 下），或者我们想要强制相对于项目根目录
+  if rel_path:sub(1, 1) == "/" or rel_path:sub(2, 2) == ":" then
+    rel_path = path:gsub("^" .. vim.pesc(root .. "/"), "")
+  end
+  vim.fn.setreg("+", rel_path)
+  vim.notify("已复制相对路径: " .. rel_path)
 end, { desc = "Copy Relative Path" })
 
 map("n", "<leader>fY", function()
-  local path = vim.fn.expand("%:p")
+  local path = vim.api.nvim_buf_get_name(0)
+  if path == "" then
+    vim.notify("无有效文件路径", vim.log.levels.WARN)
+    return
+  end
   vim.fn.setreg("+", path)
   vim.notify("已复制绝对路径: " .. path)
 end, { desc = "Copy Absolute Path" })
