@@ -765,4 +765,3 @@ include "dms/outputs.kdl"
 include "dms/windowrules.kdl"
 
 include "theme.kdl"
-include "dms/binds.kdl"
