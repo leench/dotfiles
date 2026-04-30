@@ -4,6 +4,12 @@ return {
     -- add any options here
     cli = {
       shell = "zsh",
+      win = {
+        layout = "right",
+        split = {
+          width = 0.5,
+        },
+      },
       mux = {
         backend = "zellij",
         enabled = true,
