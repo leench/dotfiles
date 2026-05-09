@@ -7,7 +7,6 @@ return {
   { "mbbill/undotree" },
   { "preservim/tagbar" },
   { "tpope/vim-surround" },
-  { "tversteeg/registers.nvim", opts = {} },
 
   -- Mason / Null-ls (现在叫 none-ls)
   -- 注意：LazyVim 建议使用 conform.nvim 进行格式化
