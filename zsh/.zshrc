@@ -292,6 +292,17 @@ bindkey '^l' autosuggest-accept
 # 7. 外部配置加载 (放在最后以确保覆盖)
 # ===============================================================
 
+# OpenCode multiplexer 快捷启动 (tmux/zellij 内用)
+omos() {
+    local port
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        port=$(jot -r 1 49152 65535)
+    else
+        port=$(shuf -i 49152-65535 -n 1)
+    fi
+    OPENCODE_PORT="$port" opencode --port "$port" "$@"
+}
+
 # 加载私密变量 (如 API Keys)
 [[ -f ~/.zshrc_secret ]] && source ~/.zshrc_secret
 
