@@ -127,3 +127,13 @@ map("n", "<leader>fY", function()
   vim.fn.setreg("+", path)
   vim.notify("已复制绝对路径: " .. path)
 end, { desc = "Copy Absolute Path" })
+
+-- 切换折行
+map("n", "<leader>uw", function()
+  vim.opt_local.wrap = not vim.opt_local.wrap:get()
+  if vim.opt_local.wrap:get() then
+    vim.notify("已开启折行 (Wrap Enabled)")
+  else
+    vim.notify("已关闭折行 (Wrap Disabled)")
+  end
+end, { desc = "Toggle Wrap" })
