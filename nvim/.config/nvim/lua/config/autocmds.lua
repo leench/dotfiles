@@ -6,3 +6,6 @@
 --
 -- Or remove existing autocmds by their group name (which is prefixed with `lazyvim_` for the defaults)
 -- e.g. vim.api.nvim_del_augroup_by_name("lazyvim_wrap_spell")
+
+-- 永久禁用 Markdown 等文件中的自动拼写检查
+vim.api.nvim_del_augroup_by_name("lazyvim_wrap_spell")
