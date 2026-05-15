@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mage Delegation"
+  short_description: "Delegate bounded verification work to the mage agent"
+  default_prompt: "Use mage-delegation when a task needs compact verification of docs, prior decisions, or external facts."
