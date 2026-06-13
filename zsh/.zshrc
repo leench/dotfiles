@@ -303,6 +303,24 @@ omos() {
     OPENCODE_PORT="$port" opencode --port "$port" "$@"
 }
 
+# OpenCode with Superpowers plugin
+ocsp() {
+    local config_dir="$HOME/.config/opencode-profiles/with-superpowers"
+    local config_file="$config_dir/opencode.json"
+
+    if [[ ! -d "$config_dir" ]]; then
+        echo "opencode config dir not found: $config_dir" >&2
+        return 1
+    fi
+
+    if [[ ! -f "$config_file" ]]; then
+        echo "opencode config file not found: $config_file" >&2
+        return 1
+    fi
+
+    OPENCODE_CONFIG="$config_file" opencode "$@"
+}
+
 # 加载私密变量 (如 API Keys)
 [[ -f ~/.zshrc_secret ]] && source ~/.zshrc_secret
 
