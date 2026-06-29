@@ -1,60 +1,10 @@
 {
   "$schema": "https://unpkg.com/oh-my-opencode-slim@latest/oh-my-opencode-slim.schema.json",
-  "preset": "opencode-go-daily",
+  "preset": "ds",
   "presets": {
-    "openai": {
+    "glm": {
       "orchestrator": {
-        "model": "openai/gpt-5.5",
-        "skills": [
-          "*"
-        ],
-        "mcps": [
-          "*",
-          "!context7"
-        ]
-      },
-      "oracle": {
-        "model": "openai/gpt-5.5",
-        "variant": "high",
-        "skills": [
-          "simplify"
-        ],
-        "mcps": []
-      },
-      "librarian": {
-        "model": "openai/gpt-5.4-mini",
-        "variant": "low",
-        "skills": [],
-        "mcps": [
-          "websearch",
-          "context7",
-          "grep_app"
-        ]
-      },
-      "explorer": {
-        "model": "openai/gpt-5.4-mini",
-        "variant": "low",
-        "skills": [],
-        "mcps": []
-      },
-      "designer": {
-        "model": "openai/gpt-5.4-mini",
-        "variant": "medium",
-        "skills": [
-          "agent-browser"
-        ],
-        "mcps": []
-      },
-      "fixer": {
-        "model": "openai/gpt-5.4-mini",
-        "variant": "low",
-        "skills": [],
-        "mcps": []
-      }
-    },
-    "opencode-go-power": {
-      "orchestrator": {
-        "model": "opencode-go/glm-5.1",
+        "model": "opencode-go/glm-5.2",
         "skills": [
           "*"
         ],
@@ -78,7 +28,7 @@
         "mcps": []
       },
       "librarian": {
-        "model": "opencode-go/minimax-m2.7",
+        "model": "opencode-go/minimax-m3",
         "skills": [],
         "mcps": [
           "websearch",
@@ -87,7 +37,7 @@
         ]
       },
       "explorer": {
-        "model": "opencode-go/minimax-m2.7",
+        "model": "opencode-go/minimax-m3",
         "skills": [],
         "mcps": []
       },
@@ -111,7 +61,7 @@
         "mcps": []
       }
     },
-    "opencode-go-daily": {
+    "ds": {
       "orchestrator": {
         "model": "opencode-go/deepseek-v4-pro",
         "skills": [
@@ -136,7 +86,7 @@
         "mcps": []
       },
       "librarian": {
-        "model": "opencode-go/minimax-m2.7",
+        "model": "opencode-go/minimax-m3",
         "skills": [],
         "mcps": [
           "websearch",

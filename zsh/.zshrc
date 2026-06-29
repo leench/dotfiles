@@ -341,3 +341,6 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 # >>> oh-my-opencode-slim background subagents >>>
 export OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true
 # <<< oh-my-opencode-slim background subagents <<<
+
+# Skip onnxruntime CUDA binary download (no GPU on this server)
+export ONNXRUNTIME_NODE_INSTALL=skip
