@@ -198,7 +198,7 @@ alias pvim='https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 n
 
 # Poetry 常用命令
 alias p="poetry"
-alias pi="poetry install"
+# alias pi="poetry install"
 alias pr="poetry run"
 alias pa="poetry add"
 alias pl="poetry lock"
