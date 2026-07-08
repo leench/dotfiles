@@ -123,7 +123,6 @@ plugins=(
     zsh-syntax-highlighting 
     poetry 
     you-should-use 
-    command-not-found 
     fzf
     docker
 )
