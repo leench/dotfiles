@@ -229,6 +229,8 @@ proxy() {
     fi
 }
 alias proxy='proxy '
+alias nop='unset HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY no_proxy && echo "Proxy environment variables cleared."'
+alias noproxy='nop'
 
 # SSH 增强与 FZF 选择器
 ssh() {
