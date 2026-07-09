@@ -4,6 +4,9 @@
 
 vim.g.autoformat = false
 
+-- LazyVim root dir detection: prefer explicit monorepo marker/git root before LSP.
+vim.g.root_spec = { { ".nvim-root", ".git" }, "lsp", "cwd" }
+
 -- 基础选项
 vim.g.mapleader = " "
 vim.g.maplocalleader = " "
