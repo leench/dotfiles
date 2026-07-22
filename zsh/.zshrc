@@ -221,8 +221,8 @@ esac
 
 # 代理开关
 proxy() {
-    export HTTP_PROXY="socks5h://127.0.0.1:7890"
-    export HTTPS_PROXY="socks5h://127.0.0.1:7890"
+    export HTTP_PROXY="http://127.0.0.1:7890"
+    export HTTPS_PROXY="http://127.0.0.1:7890"
     export ALL_PROXY="socks5h://127.0.0.1:7890"
     export NO_PROXY="localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,*.local,*.internal"
     export no_proxy="$NO_PROXY"
