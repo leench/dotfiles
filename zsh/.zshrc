@@ -344,3 +344,7 @@ export OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true
 
 # Skip onnxruntime CUDA binary download (no GPU on this server)
 export ONNXRUNTIME_NODE_INSTALL=skip
+
+if (( $+commands[fastfetch] )); then
+    fastfetch
+fi
