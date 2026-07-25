@@ -75,6 +75,10 @@ _update_dotfiles() {
 }
 _update_dotfiles
 
+if (( $+commands[fastfetch] )); then
+    fastfetch --pipe false
+fi
+
 # ===============================================================
 # 1. Powerlevel10k 即时响应 (保持在文件顶部)
 # ===============================================================
@@ -344,7 +348,3 @@ export OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true
 
 # Skip onnxruntime CUDA binary download (no GPU on this server)
 export ONNXRUNTIME_NODE_INSTALL=skip
-
-if (( $+commands[fastfetch] )); then
-    fastfetch
-fi
