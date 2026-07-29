@@ -1,3 +1,9 @@
+local lazygit_server = vim.v.servername
+if lazygit_server == "" then
+  local ok, server = pcall(vim.fn.serverstart, vim.fn.tempname())
+  lazygit_server = ok and server or ""
+end
+
 return {
   { "folke/noice.nvim", enabled = false },
   {
@@ -17,6 +23,9 @@ return {
         },
       },
       lazygit = {
+        env = {
+          NVIM = lazygit_server,
+        },
         -- 配置窗口样式
         win = {
           style = "float",
