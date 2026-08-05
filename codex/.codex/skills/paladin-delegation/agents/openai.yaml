@@ -1,4 +1,0 @@
-interface:
-  display_name: "Paladin Delegation"
-  short_description: "Delegate a focused read-only quality pass to the paladin agent"
-  default_prompt: "Use paladin-delegation when a concrete change needs an independent risk review before finalizing."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Hunter Delegation"
-  short_description: "Delegate bounded codebase exploration to the hunter agent"
-  default_prompt: "Use hunter-delegation when a task needs quick read-only codebase mapping before deciding what to do."

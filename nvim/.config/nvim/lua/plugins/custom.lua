@@ -27,6 +27,28 @@ return {
       },
     },
   },
+  {
+    "lewis6991/gitsigns.nvim",
+    opts = function(_, opts)
+      local on_attach = opts.on_attach
+      opts.on_attach = function(buffer)
+        if on_attach then
+          on_attach(buffer)
+        end
+
+        pcall(vim.keymap.del, "n", "]h", { buffer = buffer })
+        pcall(vim.keymap.del, "n", "[h", { buffer = buffer })
+
+        local gs = require("gitsigns")
+        local function map(lhs, action, desc)
+          vim.keymap.set("n", lhs, action, { buffer = buffer, desc = desc, silent = true })
+        end
+
+        map("<leader>gn", function() gs.nav_hunk("next") end, "Next Hunk")
+        map("<leader>gN", function() gs.nav_hunk("prev") end, "Prev Hunk")
+      end
+    end,
+  },
 
   -- 主题
   -- { "folke/tokyonight.nvim", opts = { style = "moon" } },
