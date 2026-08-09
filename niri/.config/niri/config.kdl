@@ -730,8 +730,8 @@ binds {
     // Mod+Shift+Space { switch-layout "prev"; }
 
     // Screenshots (40% friendly - grim/slurp/swappy)
-    // 选区截图：保存文件 + 复制图片(Ctrl+V) + 复制路径(中键粘贴) + 发送通知
-    Mod+S { spawn "bash" "-c" "filepath=\"$HOME/Pictures/Screenshots/Screenshot_$(date +'%Y-%m-%d_%H-%M-%S').png\"; grim -g \"$(slurp)\" \"$filepath\" && { wl-copy < \"$filepath\"; echo \"$filepath\" | wl-copy --primary; notify-send \"截图已保存\" \"$filepath\" -i \"$filepath\"; }"; }
+    // 选区截图：保存文件 + 复制路径(Ctrl+V 粘贴) + 图片进主剪贴板(中键粘贴) + 发送通知
+    Mod+S { spawn "bash" "-c" "filepath=\"$HOME/Pictures/Screenshots/Screenshot_$(date +'%Y-%m-%d_%H-%M-%S').png\"; grim -g \"$(slurp)\" \"$filepath\" && { wl-copy --primary < \"$filepath\"; printf '%s' \"$filepath\" | wl-copy; notify-send \"截图已保存\" \"$filepath\" -i \"$filepath\"; }"; }
     // 选区截图并编辑：使用 swappy，编辑后可手动点击保存或复制
     Mod+Shift+S { spawn "bash" "-c" "grim -g \"$(slurp)\" - | swappy -f -"; }
     // 全屏截图 (Niri 内置)
