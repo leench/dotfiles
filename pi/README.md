@@ -2,7 +2,10 @@
 
 This package is deployed by `sync.sh`, not by Stow's default directory
 mapping. Stable agents, prompts, skills and extension sources are linked into
-Pi's user directories; settings and runtime state remain local.
+Pi's user directories; settings and runtime state remain local. Extension
+`node_modules` stay under `~/.pi/agent/extensions` and receive an ignored
+source-side bridge symlink so Node can resolve dependencies through the
+linked source path.
 
 - `packages.txt`: pinned third-party Pi packages
 - `defaults/`: first-install settings only

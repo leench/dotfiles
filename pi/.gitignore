@@ -1,5 +1,7 @@
 # Runtime dependencies and logs must stay outside Git.
 extensions/**/node_modules/
+extensions/**/node_modules
 extensions/**/logs/
+extensions/**/logs
 **/.git/
 *.log

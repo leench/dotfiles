@@ -423,24 +423,62 @@ reconcile_packages() {
     "$pi_bin" update --extensions
 }
 
+ensure_dependency_bridge() {
+    local source_node_modules="$1"
+    local target_node_modules="$2"
+
+    if [[ -L "$source_node_modules" ]]; then
+        if [[ "$(readlink -f "$source_node_modules")" == "$(readlink -f "$target_node_modules")" ]]; then
+            return 0
+        fi
+        if [[ "$CHECK_ONLY" -eq 1 ]]; then
+            check_problem "extension node_modules bridge 指向错误：$source_node_modules"
+        else
+            fail "extension node_modules bridge 指向错误，未自动覆盖：$source_node_modules"
+        fi
+        return 0
+    fi
+
+    if [[ -e "$source_node_modules" ]]; then
+        # A manually installed source-side dependency tree is usable; do not
+        # delete or move it automatically.
+        warn "保留 dotfiles 中已有的 extension node_modules：$source_node_modules"
+        return 0
+    fi
+
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then
+        check_problem "缺少 extension node_modules bridge：$source_node_modules"
+        return 0
+    fi
+
+    ln -s "$target_node_modules" "$source_node_modules"
+    log "建立 node_modules bridge：$source_node_modules -> $target_node_modules"
+}
+
 reconcile_custom_dependencies() {
     local npm_bin
     npm_bin="${NPM_BIN:-$(command -v npm || true)}"
     [[ -n "$npm_bin" ]] || fail "找不到 npm 命令"
 
     while IFS= read -r -d '' lockfile; do
-        local rel ext_rel target_dir
+        local rel ext_rel target_dir source_node_modules target_node_modules
         rel="${lockfile#"$PI_DIR/extensions/"}"
         ext_rel="${rel%/package-lock.json}"
         target_dir="$PI_EXT_DIR/$ext_rel"
-        if [[ ! -d "$target_dir/node_modules" ]]; then
+        source_node_modules="$PI_DIR/extensions/$ext_rel/node_modules"
+        target_node_modules="$target_dir/node_modules"
+
+        if [[ ! -d "$target_node_modules" ]]; then
             if [[ "$CHECK_ONLY" -eq 1 ]]; then
-                check_problem "缺少自研 extension 依赖：$target_dir/node_modules"
+                check_problem "缺少自研 extension 依赖：$target_node_modules"
+                continue
             else
                 log "执行 npm ci：$target_dir"
                 (cd "$target_dir" && "$npm_bin" ci)
             fi
         fi
+
+        ensure_dependency_bridge "$source_node_modules" "$target_node_modules"
     done < <(find "$PI_DIR/extensions" -type f -name package-lock.json \
         -not -path '*/node_modules/*' \
         -not -path '*/.git/*' \
