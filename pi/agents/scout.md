@@ -3,7 +3,7 @@ name: scout
 description: 快速代码侦察，返回压缩上下文供其他 agent 使用
 model: opencode-go/deepseek-v4-flash
 tools: read, grep, find, ls, bash
-thinking: low
+thinking: high
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
