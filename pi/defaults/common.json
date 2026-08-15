@@ -1,0 +1,7 @@
+{
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.6-luna",
+  "defaultThinkingLevel": "max",
+  "theme": "dark",
+  "hideThinkingBlock": true
+}

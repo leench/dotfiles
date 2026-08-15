@@ -1,0 +1,14 @@
+^/AGENTS\.md$
+^/agents
+^/extensions
+^/skills
+^/prompts
+^/defaults
+^/packages\.txt$
+^/pi-atelier\.json$
+^/remote-skills
+^/remote-pi
+^/systemd
+^/sync\.sh$
+^/setup\.sh$
+^/README\.md$

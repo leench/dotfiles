@@ -1,0 +1,16 @@
+# Copy to ~/.config/systemd/user/pi-web.service only after configuring the
+# local executable path and ~/.config/pi-web/env. Never commit that env file.
+[Unit]
+Description=Pi Web
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/pi-web/env
+ExecStart=%h/.local/bin/pi-web
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

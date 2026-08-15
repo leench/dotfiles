@@ -58,8 +58,16 @@ _update_dotfiles() {
         if [[ -z "$choice" || "$choice" == [yY]* ]]; then
             echo -e "正在更新 (git pull --rebase --autostash)..."
             if git -C "$dotfiles_dir" pull --rebase --autostash origin main; then
-                echo -e "\033[0;32m[OK] 更新成功！\033[0m"
-                echo "$today" > "$cache_file"
+                local pi_sync="$dotfiles_dir/pi/sync.sh"
+                if [[ -x "$pi_sync" ]] && "$pi_sync" --update; then
+                    echo -e "\033[0;32m[OK] 更新与 Pi 同步成功！\033[0m"
+                    echo "$today" > "$cache_file"
+                elif [[ -x "$pi_sync" ]]; then
+                    echo -e "\n\033[0;31m[ERROR] dotfiles 已拉取，但 Pi 同步失败；本次不会标记为完成。\033[0m"
+                else
+                    echo -e "\033[0;32m[OK] 更新成功！\033[0m"
+                    echo "$today" > "$cache_file"
+                fi
             else
                 echo -e "\n\033[0;31m[ERROR] 更新失败，请尝试手动解决冲突。\033[0m"
             fi

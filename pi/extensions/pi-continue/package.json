@@ -1,0 +1,28 @@
+{
+  "name": "pi-continue",
+  "version": "1.0.0",
+  "description": "Resume interrupted agent tasks: /continue (or /c) tells the agent to pick up where it left off after an LLM API failure or manual interrupt",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "continue",
+    "resume",
+    "interrupt"
+  ],
+  "type": "module",
+  "files": [
+    "index.ts",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.1"
+  }
+}
