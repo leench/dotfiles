@@ -37,6 +37,13 @@ command -v npm
 command -v pi
 ```
 
+初始化 Pi 自研 extension 的 submodule：
+
+```bash
+cd "$DOTFILES_DIR"
+git submodule update --init --recursive
+```
+
 如果缺少命令，先向用户报告缺少的依赖；不要自行删除或替换已有 Pi 配置。
 
 确认 Pi 没有正在执行迁移相关操作。若 Pi 正在运行，不要强行终止；先请用户退出 Pi，再继续。
@@ -164,8 +171,11 @@ stat -c '%a %F %n' "$HOME/.pi/agent/settings.json" "$HOME/.pi/agent/auth.json"
 ```bash
 cd "$DOTFILES_DIR"
 git pull --rebase
+git submodule update --init --recursive
 ./pi/sync.sh --update
 ```
+
+`pi/extensions/pi-proxy-router` 是独立仓库的 submodule。修改该扩展时，直接进入该目录提交并 push；dotfiles 更新到新的扩展提交后，再在外层仓库提交 submodule pointer。
 
 如果 zsh 已经安装了本仓库版本，现有 dotfiles 更新流程会在成功 pull 后自动调用 `pi/sync.sh --update`。
 

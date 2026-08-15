@@ -155,13 +155,14 @@ preflight_extensions() {
     done < <(find "$source" -type f \
         -not -path '*/node_modules/*' \
         -not -path '*/logs/*' \
+        -not -path '*/.git' \
         -not -path '*/.git/*' \
         -print0)
 
     while IFS= read -r -d '' target_file; do
         rel="${target_file#"$target/"}"
         case "$rel" in
-            */node_modules/*|*/logs/*|*/.git/*)
+            */node_modules/*|*/logs/*|*/.git|*/.git/*)
                 continue
                 ;;
         esac
@@ -293,6 +294,7 @@ ensure_static_layout() {
     done < <(find "$PI_DIR/extensions" -type f \
         -not -path '*/node_modules/*' \
         -not -path '*/logs/*' \
+        -not -path '*/.git' \
         -not -path '*/.git/*' \
         -print0)
 
@@ -481,6 +483,7 @@ reconcile_custom_dependencies() {
         ensure_dependency_bridge "$source_node_modules" "$target_node_modules"
     done < <(find "$PI_DIR/extensions" -type f -name package-lock.json \
         -not -path '*/node_modules/*' \
+        -not -path '*/.git' \
         -not -path '*/.git/*' \
         -print0)
 }

@@ -1,0 +1,3 @@
+[submodule "pi/extensions/pi-proxy-router"]
+	path = pi/extensions/pi-proxy-router
+	url = git@github.com:leench/pi-proxy-router.git
