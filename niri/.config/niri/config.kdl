@@ -283,7 +283,8 @@ spawn-sh-at-startup "eval $(gnome-keyring-daemon --start --components=secrets,ss
 spawn-sh-at-startup "sleep 3; env XDG_CURRENT_DESKTOP=Unity LC_ALL=zh_CN.UTF-8 1password --silent --ozone-platform-hint=auto --enable-features=WaylandWindowDecorations"
 spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "/home/niri/hid-host-gui" "--tray"
 spawn-at-startup "vicinae" "server"
-spawn-at-startup "mako"
+// DMS owns org.freedesktop.Notifications; do not start mako alongside it.
+// spawn-at-startup "mako"
 spawn-at-startup "mpd"
 spawn-at-startup "lan-mouse" "daemon"
 // spawn-at-startup "/home/niri/.local/bin/random_wallpaper.sh"
