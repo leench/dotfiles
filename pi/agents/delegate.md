@@ -2,6 +2,7 @@
 name: delegate
 description: 轻量子代理，继承父模型且无默认读取
 model: opencode-go/deepseek-v4-flash
+thinking: high
 systemPromptMode: append
 inheritProjectContext: true
 tools: read, grep, find, ls, bash, edit, write, contact_supervisor

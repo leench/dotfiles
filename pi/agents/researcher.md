@@ -3,7 +3,7 @@ name: researcher
 description: 自主网络研究员——搜索、评估并综合一份聚焦的研究简报
 model: opencode-go/deepseek-v4-flash
 tools: read, write, web_search, fetch_content, get_search_content, intercom
-thinking: medium
+thinking: high
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false

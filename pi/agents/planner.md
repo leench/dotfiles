@@ -1,9 +1,9 @@
 ---
 name: planner
 description: 根据侦察结果和需求制定实现计划（只读，不做任何修改）
-model: openai-codex/gpt-5.6-luna
+model: opencode-go/glm-5.3
 tools: read, grep, find, ls
-thinking: max
+thinking: high
 acceptanceRole: read-only
 systemPromptMode: replace
 inheritProjectContext: true
