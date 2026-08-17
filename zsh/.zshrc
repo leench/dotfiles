@@ -99,6 +99,9 @@ fi
 # ===============================================================
 export PATH="$HOME/.local/bin:$PATH"
 
+# 禁止 fff 在 cwd 为 home 目录时扫描整个 home，避免额外的索引开销
+export FFF_ENABLE_HOME_SCAN=0
+
 # OpenCode 路径 (仅当目录存在且不在 PATH 中时添加)
 if [[ -d "$HOME/.opencode/bin" && ":$PATH:" != *":$HOME/.opencode/bin:"* ]]; then
     export PATH="$HOME/.opencode/bin:$PATH"

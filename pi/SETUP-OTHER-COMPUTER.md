@@ -155,14 +155,22 @@ stat -c '%a %F %n' "$HOME/.pi/agent/settings.json" "$HOME/.pi/agent/auth.json"
 
 ## 5. 主机专属配置
 
-首次创建 `settings.json` 时：
+主机专属配置属于本机状态，不放入 dotfiles 仓库。首次创建或显式应用
+defaults 时，脚本会读取：
 
-- 所有电脑使用 `pi/defaults/common.json`
-- 只有 hostname 匹配的文件才使用 `pi/defaults/hosts/<hostname>.json`
+- 所有电脑使用仓库中的 `pi/defaults/common.json`
+- 如果存在，则额外使用 `~/.pi/agent/host-defaults/<hostname>.json`
 - 已存在的 `settings.json` 不会被重新生成
 - 日常同步只维护 `settings.json` 的 `packages` 字段
 
-如果本机需要新的主机专属配置，先报告给用户，不要把另一台电脑的 host 配置直接套用过来。
+例如在本机创建配置：
+
+```bash
+mkdir -p "$HOME/.pi/agent/host-defaults"
+${EDITOR:-vi} "$HOME/.pi/agent/host-defaults/$(hostname -s).json"
+```
+
+不要把另一台电脑的 host 配置直接套用过来；没有本机文件时，只使用公共 defaults。
 
 ## 6. 后续更新
 

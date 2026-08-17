@@ -1,9 +1,0 @@
-{
-  "proxy-router": {
-    "openai/*": "socks5h://localhost:7890",
-    "opencode-go/gpt*": "socks5h://127.0.0.1:7890",
-    "opencode-go/deepseek*": "direct",
-    "opencode-go/glm*": "direct",
-    "openai-codex/*": "socks5h://localhost:7890"
-  }
-}

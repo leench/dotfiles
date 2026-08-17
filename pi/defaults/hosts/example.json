@@ -1,0 +1,6 @@
+{
+  "proxy-router": {
+    "provider/model-*": "socks5h://127.0.0.1:7890",
+    "provider/direct-*": "direct"
+  }
+}

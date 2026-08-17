@@ -10,7 +10,8 @@ GLOBAL_AGENTS_DIR="$HOME_DIR/.agents"
 GLOBAL_SKILLS_DIR="$GLOBAL_AGENTS_DIR/skills"
 SETTINGS_FILE="$PI_AGENT_DIR/settings.json"
 HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
-HOST_DEFAULTS="$PI_DIR/defaults/hosts/$HOSTNAME_SHORT.json"
+HOST_DEFAULTS_DIR="${PI_HOST_DEFAULTS_DIR:-$PI_AGENT_DIR/host-defaults}"
+HOST_DEFAULTS="$HOST_DEFAULTS_DIR/$HOSTNAME_SHORT.json"
 
 MODE="${1:---update}"
 case "$MODE" in
@@ -309,7 +310,10 @@ ensure_static_layout() {
 }
 
 load_package_specs() {
-    mapfile -t PACKAGE_SPECS < <(awk '
+    PACKAGE_SPECS=()
+    while IFS= read -r spec; do
+        PACKAGE_SPECS[${#PACKAGE_SPECS[@]}]="$spec"
+    done < <(awk '
         /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
         { sub(/[[:space:]]+#.*$/, ""); print }
     ' "$PI_DIR/packages.txt")
