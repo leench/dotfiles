@@ -83,6 +83,7 @@ cd "$DOTFILES_DIR"
 `pi/sync.sh` 会先预检以下内容：
 
 - `~/.pi/agent/AGENTS.md`
+- `~/.pi/agent/subagents.json`
 - `~/.pi/agent/agents/`
 - `~/.pi/agent/prompts/`
 - `~/.agents/skills/`
@@ -134,6 +135,7 @@ pi list
 确认以下路径是 symlink，并指向当前 dotfiles：
 
 ```bash
+readlink -f "$HOME/.pi/agent/subagents.json"
 readlink -f "$HOME/.pi/agent/agents"
 readlink -f "$HOME/.pi/agent/prompts"
 readlink -f "$HOME/.agents/skills"
@@ -155,13 +157,15 @@ stat -c '%a %F %n' "$HOME/.pi/agent/settings.json" "$HOME/.pi/agent/auth.json"
 
 ## 5. 主机专属配置
 
-主机专属配置属于本机状态，不放入 dotfiles 仓库。首次创建或显式应用
+主机专属配置属于本机状态，不放入 dotfiles 仓库；但全机器共用的 Tintin
+子代理策略由 `pi/subagents.json` 管理。首次创建或显式应用
 defaults 时，脚本会读取：
 
 - 所有电脑使用仓库中的 `pi/defaults/common.json`
 - 如果存在，则额外使用 `~/.pi/agent/host-defaults/<hostname>.json`
 - 已存在的 `settings.json` 不会被重新生成
 - 日常同步只维护 `settings.json` 的 `packages` 字段
+- `subagents.json` 是 dotfiles 管理的稳定子代理运行策略，会建立 symlink 同步
 
 例如在本机创建配置：
 

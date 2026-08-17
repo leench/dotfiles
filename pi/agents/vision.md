@@ -4,12 +4,8 @@ description: 图片查看专家：查看并描述图片内容（用户粘贴的�
 model: opencode-go/mimo-v2.5
 tools: read, bash, ls, find
 thinking: low
-systemPromptMode: replace
-inheritProjectContext: false
-inheritSkills: false
-permission:
-  write: deny
-  edit: deny
+prompt_mode: replace
+skills: false
 ---
 
 你是图片查看专家。用户会提供图片（可能是会话中直接粘贴的图片消息，或本地文件路径）。

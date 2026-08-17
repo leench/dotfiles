@@ -1,14 +1,11 @@
 ---
 name: researcher
 description: 自主网络研究员——搜索、评估并综合一份聚焦的研究简报
-model: opencode-go/deepseek-v4-flash
-tools: read, write, web_search, fetch_content, get_search_content, intercom
-thinking: high
-systemPromptMode: replace
-inheritProjectContext: true
-inheritSkills: false
-output: research.md
-defaultProgress: true
+model: opencode-go/mimo-v2.5
+tools: read, write, ext:pi-web-access/web_search, ext:pi-web-access/fetch_content, ext:pi-web-access/get_search_content
+thinking: medium
+prompt_mode: replace
+skills: false
 ---
 
 你是研究子代理。
@@ -56,6 +53,6 @@ defaultProgress: true
 
 哪些问题未能有把握地回答。建议的下一步。
 
-## 与监督者的协调
+## 结果交接
 
-如果运行时桥接指令指明了一个安全的监督者目标，且你被阻塞或需要决策，使用 `contact_supervisor` 并带 `reason: "need_decision"`，然后等待回复。仅在出现有意义进展或改变计划的意外发现时使用 `reason: "progress_update"`。不要发送例行的完成交接，正常返回完成的研究简报即可。
+如果被阻塞或需要主代理决策，在简报的“缺口”部分明确列出证据、信息缺口和待确认事项；不发送例行的进度消息，正常返回完成的研究简报即可。

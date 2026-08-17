@@ -1,0 +1,7 @@
+{
+  "maxConcurrent": 3,
+  "defaultMaxTurns": 30,
+  "graceTurns": 3,
+  "strictAgentFiles": true,
+  "fallbackSubagent": "none"
+}

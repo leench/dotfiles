@@ -1,8 +1,9 @@
 # Pi configuration
 
 This package is deployed by `sync.sh`, not by Stow's default directory
-mapping. Stable agents, prompts, skills and extension sources are linked into
-Pi's user directories; settings and runtime state remain local. Extension
+mapping. Stable agents, prompts, skills, extension sources and the Tintin
+subagent policy are linked into Pi's user directories; credentials, the main
+`settings.json`, sessions and other runtime state remain local. Extension
 `node_modules` stay under `~/.pi/agent/extensions` and receive an ignored
 source-side bridge symlink so Node can resolve dependencies through the
 linked source path.
@@ -14,6 +15,7 @@ repository as well. Clone this repository with `--recurse-submodules`, or run
 `git submodule update --init --recursive` before `sync.sh`.
 
 - `packages.txt`: pinned third-party Pi packages
+- `subagents.json`: synchronized Tintin subagent runtime policy
 - `defaults/`: first-install settings only
 - `sync.sh --install`: initial migration/install
 - `sync.sh --update`: idempotent repair and package reconciliation
