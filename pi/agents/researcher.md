@@ -5,6 +5,7 @@ model: opencode-go/mimo-v2.5
 tools: read, write, ext:pi-web-access/web_search, ext:pi-web-access/fetch_content, ext:pi-web-access/get_search_content
 thinking: medium
 prompt_mode: replace
+run_in_background: true
 skills: false
 ---
 

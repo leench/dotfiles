@@ -5,6 +5,7 @@ model: openai-codex/gpt-5.6-sol
 tools: read, grep, find, ls, bash
 thinking: high
 prompt_mode: replace
+run_in_background: true
 skills: find-docs
 ---
 
