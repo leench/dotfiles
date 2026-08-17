@@ -8,11 +8,12 @@ subagent policy are linked into Pi's user directories; credentials, the main
 source-side bridge symlink so Node can resolve dependencies through the
 linked source path.
 
-`extensions/pi-proxy-router` is a Git submodule of its standalone repository.
-Edit it directly in this directory, then commit/push the extension repository;
-after updating its submodule pointer, commit the pointer in this dotfiles
-repository as well. Clone this repository with `--recurse-submodules`, or run
-`git submodule update --init --recursive` before `sync.sh`.
+`extensions/pi-proxy-router` and `extensions/pi-time-up` are Git submodules
+of their standalone repositories. Edit an extension directly in its submodule
+directory, then commit/push the extension repository; after updating its submodule
+pointer, commit the pointer in this dotfiles repository as well. Clone this
+repository with `--recurse-submodules`, or run `git submodule update --init
+--recursive` before `sync.sh`.
 
 - `packages.txt`: pinned third-party Pi packages
 - `subagents.json`: synchronized Tintin subagent runtime policy

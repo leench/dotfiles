@@ -1,3 +1,6 @@
 [submodule "pi/extensions/pi-proxy-router"]
 	path = pi/extensions/pi-proxy-router
 	url = git@github.com:leench/pi-proxy-router.git
+[submodule "pi/extensions/pi-time-up"]
+	path = pi/extensions/pi-time-up
+	url = git@github.com:leench/pi-time-up.git
