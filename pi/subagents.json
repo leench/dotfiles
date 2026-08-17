@@ -3,5 +3,6 @@
   "defaultMaxTurns": 30,
   "graceTurns": 3,
   "strictAgentFiles": true,
-  "fallbackSubagent": "none"
+  "disableDefaultAgents": true,
+  "fallbackSubagent": "worker"
 }
