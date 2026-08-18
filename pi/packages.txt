@@ -6,5 +6,4 @@ npm:pi-atelier@0.8.1
 npm:pi-zentui@0.20.1
 npm:pi-btw@0.4.1
 npm:@ogulcancelik/pi-herdr@0.4.0
-npm:task-complete-notify@1.0.6
 npm:@tintinweb/pi-subagents@0.16.1
