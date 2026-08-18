@@ -163,8 +163,9 @@ defaults 时，脚本会读取：
 
 - 所有电脑使用仓库中的 `pi/defaults/common.json`
 - 如果存在，则额外使用 `~/.pi/agent/host-defaults/<hostname>.json`
-- 已存在的 `settings.json` 不会被重新生成
-- 日常同步只维护 `settings.json` 的 `packages` 字段
+- 已存在的 `settings.json` 不会被整体覆盖
+- `defaults/common.json` 中显式存在的字段会在日常 `sync.sh --update` 时同步覆盖
+- settings 中仅存在于本机的字段、package 和 extension 会保留
 - `subagents.json` 是 dotfiles 管理的稳定子代理运行策略，会建立 symlink 同步
 
 例如在本机创建配置：

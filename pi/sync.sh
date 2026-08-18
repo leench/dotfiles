@@ -146,11 +146,12 @@ preflight_dir_contents() {
 preflight_extensions() {
     local source="$PI_DIR/extensions"
     local target="$PI_EXT_DIR"
-    local target_file rel source_file
+    local rel source_file
 
     [[ -d "$source" ]] || fail "源目录不存在：$source"
     [[ -d "$target" && ! -L "$target" ]] || return 0
 
+    # 只校验仓库管理的公用 extensions；target 中额外的文件属于本机私有内容，保留不动。
     while IFS= read -r -d '' source_file; do
         rel="${source_file#"$source/"}"
         preflight_file "$source_file" "$target/$rel" "extensions/$rel"
@@ -160,19 +161,6 @@ preflight_extensions() {
         -not -path '*/.git' \
         -not -path '*/.git/*' \
         -print0)
-
-    while IFS= read -r -d '' target_file; do
-        rel="${target_file#"$target/"}"
-        case "$rel" in
-            */node_modules/*|*/logs/*|*/.git|*/.git/*)
-                continue
-                ;;
-        esac
-        source_file="$source/$rel"
-        if [[ ! -f "$source_file" ]]; then
-            check_problem "本机 extension 文件未纳入 dotfiles（不会自动复制）：extensions/$rel"
-        fi
-    done < <(find "$target" -type f -print0)
 }
 
 preflight_static_layout() {
@@ -402,6 +390,41 @@ apply_defaults() {
     log "已显式应用 common + host defaults"
 }
 
+apply_common_settings() {
+    [[ "$MODE" == "--update" ]] || return 0
+    [[ "$CHECK_ONLY" -eq 0 ]] || return 0
+
+    local tmp
+    tmp="$(mktemp "$SETTINGS_FILE.tmp.XXXXXX")"
+    jq --slurpfile common "$PI_DIR/defaults/common.json" \
+       '. * $common[0]' \
+       "$SETTINGS_FILE" > "$tmp"
+
+    if cmp -s "$tmp" "$SETTINGS_FILE"; then
+        rm -f -- "$tmp"
+        return 0
+    fi
+
+    backup_copy "$SETTINGS_FILE" "agent/settings.json.before-common-sync"
+    chmod 600 "$tmp"
+    mv -- "$tmp" "$SETTINGS_FILE"
+    log "已同步 common.json 中显式配置的字段"
+}
+
+check_common_settings() {
+    [[ "$MODE" == "--check" ]] || return 0
+
+    local key
+    while IFS= read -r key; do
+        if ! jq -e --arg key "$key" \
+            --slurpfile common "$PI_DIR/defaults/common.json" \
+            'has($key) and .[$key] == $common[0][$key]' \
+            "$SETTINGS_FILE" >/dev/null; then
+            check_problem "settings.json 的 common 字段不一致：$key"
+        fi
+    done < <(jq -r 'keys[]' "$PI_DIR/defaults/common.json")
+}
+
 check_packages() {
     local spec
     for spec in "${PACKAGE_SPECS[@]-}"; do
@@ -504,8 +527,10 @@ fi
 ensure_static_layout
 create_settings_if_missing
 apply_defaults
+apply_common_settings
 
 if [[ "$CHECK_ONLY" -eq 1 ]]; then
+    check_common_settings
     check_packages
 else
     reconcile_packages

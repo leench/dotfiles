@@ -17,4 +17,4 @@ cp pi/defaults/hosts/example.json \
 
 然后按本机情况修改代理地址和模型匹配规则。没有本机文件时，只使用公共的 `pi/defaults/common.json`。
 
-`./pi/sync.sh --apply-defaults` 会显式应用公共 defaults 与本机 defaults；日常同步只维护 `settings.json` 的 `packages` 字段。不要把另一台电脑的主机配置复制回仓库。
+`./pi/sync.sh --apply-defaults` 会显式应用公共 defaults 与本机 defaults；日常 `./pi/sync.sh --update` 会同步 `defaults/common.json` 中显式存在的字段，但不会应用 host defaults。不要把另一台电脑的主机配置复制回仓库。

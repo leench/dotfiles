@@ -41,4 +41,4 @@ Pi 使用独立的 `pi` 包和同步脚本：
 ~/dotfiles/pi/sync.sh --check
 ```
 
-`pi/sync.sh` 只同步稳定的 agents、prompts、skills 和自定义 extension 源码；`~/.pi/agent/settings.json`、`auth.json`、sessions、缓存和依赖仍由本机管理。Pi package 版本记录在 `pi/packages.txt`。dotfiles 更新成功后，zsh 更新流程会自动执行 `pi/sync.sh --update`。
+`pi/sync.sh` 同步仓库中的公用 agents、prompts、skills、extensions 和 `pi/defaults/common.json` 中显式配置的 settings 字段；本机私有 package/extension 以及 `auth.json`、sessions、缓存和依赖仍保留在本机。Pi 公用 package 版本记录在 `pi/packages.txt`，settings 中额外的私有 package 会被保留。dotfiles 更新成功后，zsh 更新流程会自动执行 `pi/sync.sh --update`。
