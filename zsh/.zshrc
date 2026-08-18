@@ -2,6 +2,11 @@
 # 0. Dotfiles 自动更新 (每日检查)
 # 必须放在 p10k instant prompt 之前以避免 [WARNING]
 # ===============================================================
+# NVM 必须先于自动同步初始化，否则同步脚本找不到全局安装的 pi。
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
 _update_dotfiles() {
     local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}"
     local cache_file="$cache_dir/dotfiles_update_check"
@@ -148,11 +153,6 @@ source $ZSH/oh-my-zsh.sh
 # ===============================================================
 # 4. 工具与版本管理器初始化
 # ===============================================================
-
-# NVM 初始化
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
 # FZF 初始化与优化
 export FZF_DEFAULT_OPTS="-i --height 60% --layout reverse --border"
