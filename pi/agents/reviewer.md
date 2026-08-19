@@ -4,8 +4,8 @@ description: 代码审查专家，专注质量和安全分析
 model: openai-codex/gpt-5.6-luna
 tools: read, grep, find, ls, bash
 thinking: max
-prompt_mode: replace
-run_in_background: true
+systemPromptMode: replace
+async: true
 skills: find-docs
 ---
 

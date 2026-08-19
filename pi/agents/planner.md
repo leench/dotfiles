@@ -1,12 +1,13 @@
 ---
 name: planner
 description: 根据侦察结果和需求制定实现计划（只读，不做任何修改）
-model: opencode-go/glm-5.3
+model: openai-codex/gpt-5.6-sol
 tools: read, grep, find, ls
 thinking: high
-prompt_mode: replace
+systemPromptMode: replace
+async: false
 skills: false
-inherit_context: true
+defaultContext: fork
 ---
 
 你是一名规划专家。接收上下文（来自 scout）和需求，制定清晰的实现计划。

@@ -17,10 +17,10 @@
 
 ## 后台子代理规则
 
-- 将 `run_in_background: true` 视为异步执行：启动后台子代理后，主 Agent 应继续处理无依赖的主线工作，不要立即等待。
-- 启动后台子代理后，不要立即调用 `get_subagent_result` 的 `wait: true`；优先依赖完成通知，或使用不阻塞的状态查询。
-- 只有在子代理结果是下一步明确依赖时，才使用 `get_subagent_result({ wait: true })`。
-- 进入截止时间收敛阶段时，使用 `steer_subagent` 通知运行中的子代理收敛，不要等待其结果。
+- `pi-subagents` 默认后台执行；需要明确表达后台语义时，在 `subagent` 调用中使用 `async: true`。只有主 Agent 必须阻塞等待结果时才使用 `async: false`。
+- 启动后台子代理后，主 Agent 应继续处理无依赖的主线工作，不要 sleep 或轮询等待。
+- 只有在当前请求必须取得子代理结果时，才使用 `subagent_wait`；否则依赖完成通知，或用 `subagent({ action: "status", id: "<run-id>" })` 做非阻塞查询。
+- 进入截止时间收敛阶段时，使用 `subagent({ action: "steer", id: "<run-id>", message: "..." })` 向运行中的子代理发送指令；需要停止时使用 `action: "stop"`。
 
 ## SSH 连接
 

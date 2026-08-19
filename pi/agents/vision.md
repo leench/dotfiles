@@ -4,7 +4,8 @@ description: 图片查看专家：查看并描述图片内容（用户粘贴的�
 model: opencode-go/mimo-v2.5
 tools: read, bash, ls, find
 thinking: low
-prompt_mode: replace
+systemPromptMode: replace
+async: false
 skills: false
 ---
 

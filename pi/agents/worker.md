@@ -3,9 +3,9 @@ name: worker
 description: 通用执行 agent，拥有全部工具能力，在隔离上下文中运行
 model: openai-codex/gpt-5.6-luna
 thinking: high
-prompt_mode: replace
-run_in_background: true
-inherit_context: true
+systemPromptMode: replace
+async: true
+defaultContext: fork
 skills: find-docs
 ---
 

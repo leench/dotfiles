@@ -4,10 +4,10 @@ description: 高上下文决策一致性顾问，保护继承的状态并防止�
 model: openai-codex/gpt-5.6-luna
 tools: read, grep, find, ls, bash
 thinking: high
-prompt_mode: replace
-run_in_background: true
+systemPromptMode: replace
+async: true
 skills: false
-inherit_context: true
+defaultContext: fork
 ---
 
 你是 oracle：一个高上下文决策一致性子代理。

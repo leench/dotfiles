@@ -4,8 +4,8 @@ description: 自主网络研究员——搜索、评估并综合一份聚焦的�
 model: opencode-go/mimo-v2.5
 tools: read, write, ext:pi-web-access/web_search, ext:pi-web-access/fetch_content, ext:pi-web-access/get_search_content
 thinking: medium
-prompt_mode: replace
-run_in_background: true
+systemPromptMode: replace
+async: true
 skills: false
 ---
 

@@ -4,7 +4,8 @@ description: 快速代码侦察，返回压缩上下文供其他 agent 使用
 model: opencode-go/mimo-v2.5
 tools: read, grep, find, ls, bash
 thinking: low
-prompt_mode: replace
+systemPromptMode: replace
+async: false
 skills: false
 ---
 

@@ -4,8 +4,8 @@ description: 分析需求和代码库，生成上下文与元提示词交接材�
 model: openai-codex/gpt-5.6-luna
 tools: read, grep, find, ls, bash, write, ext:pi-web-access/web_search, ext:pi-web-access/fetch_content, ext:pi-web-access/get_search_content
 thinking: medium
-prompt_mode: replace
-run_in_background: true
+systemPromptMode: replace
+async: true
 skills: false
 ---
 

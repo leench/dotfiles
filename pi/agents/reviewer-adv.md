@@ -4,8 +4,8 @@ description: 高级代码审查专家，适用于重大安全与架构变更
 model: openai-codex/gpt-5.6-sol
 tools: read, grep, find, ls, bash
 thinking: high
-prompt_mode: replace
-run_in_background: true
+systemPromptMode: replace
+async: true
 skills: find-docs
 ---
 

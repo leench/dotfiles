@@ -157,8 +157,8 @@ stat -c '%a %F %n' "$HOME/.pi/agent/settings.json" "$HOME/.pi/agent/auth.json"
 
 ## 5. 主机专属配置
 
-主机专属配置属于本机状态，不放入 dotfiles 仓库；但全机器共用的 Tintin
-子代理策略由 `pi/subagents.json` 管理。首次创建或显式应用
+主机专属配置属于本机状态，不放入 dotfiles 仓库；但全机器共用的 Pi subagent 策略由 `pi/agents/`、
+`pi/extensions/subagent/config.json` 和 `pi/defaults/common.json` 管理。首次创建或显式应用
 defaults 时，脚本会读取：
 
 - 所有电脑使用仓库中的 `pi/defaults/common.json`
@@ -166,7 +166,9 @@ defaults 时，脚本会读取：
 - 已存在的 `settings.json` 不会被整体覆盖
 - `defaults/common.json` 中显式存在的字段会在日常 `sync.sh --update` 时同步覆盖
 - settings 中仅存在于本机的字段、package 和 extension 会保留
-- `subagents.json` 是 dotfiles 管理的稳定子代理运行策略，会建立 symlink 同步
+- `agents/` 和 `extensions/subagent/config.json` 会建立 symlink 同步
+- `defaults/common.json` 中的 `subagents.disableBuiltins` 会同步到每台主机的 `settings.json`
+- `packages.txt` 会确保所有主机使用同一版本的 `npm:pi-subagents`
 
 例如在本机创建配置：
 

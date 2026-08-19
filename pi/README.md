@@ -1,8 +1,8 @@
 # Pi configuration
 
 This package is deployed by `sync.sh`, not by Stow's default directory
-mapping. Stable agents, prompts, skills, extension sources and the Tintin
-subagent policy are linked into Pi's user directories. The main
+mapping. Stable agents, prompts, skills, extension sources and subagent settings
+are linked into Pi's user directories. The main
 `settings.json` remains local, but every field explicitly present in
 `defaults/common.json` is synchronized into it during `sync.sh --update`.
 Credentials, sessions and other runtime state remain local. Packages and
@@ -19,8 +19,9 @@ repository with `--recurse-submodules`, or run `git submodule update --init
 --recursive` before `sync.sh`.
 
 - `packages.txt`: pinned third-party Pi packages
-- `subagents.json`: synchronized Tintin subagent runtime policy
-- `defaults/common.json`: explicitly synchronized common settings fields
+- `agents/`: synchronized custom subagent definitions
+- `extensions/subagent/config.json`: synchronized pi-subagents runtime config
+- `defaults/common.json`: explicitly synchronized common settings fields, including builtin-agent policy
 - `defaults/hosts/`: optional host-local defaults, applied only explicitly
 - `sync.sh --install`: initial migration/install
 - `sync.sh --update`: repair links, synchronize common fields, and reconcile packages
