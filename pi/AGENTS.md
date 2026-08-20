@@ -15,12 +15,9 @@
 - 遇到不确定的项目规则，优先读取当前项目的 `AGENTS.md`。
 - 输出尽量直接、可执行。
 
-## 后台子代理规则
+## 子代理调用规则
 
-- `pi-subagents` 默认后台执行；需要明确表达后台语义时，在 `subagent` 调用中使用 `async: true`。只有主 Agent 必须阻塞等待结果时才使用 `async: false`。
-- 启动后台子代理后，主 Agent 应继续处理无依赖的主线工作，不要 sleep 或轮询等待。
-- 只有在当前请求必须取得子代理结果时，才使用 `subagent_wait`；否则依赖完成通知，或用 `subagent({ action: "status", id: "<run-id>" })` 做非阻塞查询。
-- 进入截止时间收敛阶段时，使用 `subagent({ action: "steer", id: "<run-id>", message: "..." })` 向运行中的子代理发送指令；需要停止时使用 `action: "stop"`。
+- 调用所有子代理时省略 `timeoutMs`，使用 `pi-subagents` 的默认运行时限；只有用户明确指定时才传入更短的超时。
 
 ## SSH 连接
 

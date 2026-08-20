@@ -1,3 +1,6 @@
 {
-	"artifactDir": "session"
+	"artifactDir": "session",
+	"waitTool": {
+		"enabled": false
+	}
 }

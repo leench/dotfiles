@@ -9,11 +9,12 @@ import * as path from "node:path";
 
 const WIDGET_ID = "subagent-live-tail";
 const STATUS_ID = "subagent-live-tail-status";
-const POLL_INTERVAL_MS = 150;
-const DISCOVERY_INTERVAL_MS = 1_000;
-const MIN_TAIL_LINES = 4;
-const DEFAULT_TAIL_LINES = 12;
+const POLL_INTERVAL_MS = 100;
+const DISCOVERY_INTERVAL_MS = 500;
+const MIN_TAIL_LINES = 1;
+const DEFAULT_TAIL_LINES = 5;
 const MAX_TAIL_LINES = 32;
+const OUTPUT_LINES_PER_UPDATE = 5;
 const TOP_GAP_LINES = 1;
 const BOTTOM_GAP_LINES = 1;
 const STALL_WARNING_MS = 10_000;
@@ -35,14 +36,23 @@ type LogEntry = {
 type StepSnapshot = {
 	tool?: string;
 	output: string[];
+	latest?: AsyncStep;
 };
 
 type AsyncStep = {
 	agent?: unknown;
+	label?: unknown;
+	description?: unknown;
+	task?: unknown;
+	phase?: unknown;
 	model?: unknown;
+	thinking?: unknown;
 	status?: unknown;
+	activityState?: unknown;
+	startedAt?: unknown;
 	currentTool?: unknown;
 	currentToolArgs?: unknown;
+	currentToolStartedAt?: unknown;
 	currentPath?: unknown;
 	recentOutput?: unknown;
 	recentTools?: unknown;
@@ -58,11 +68,17 @@ type AsyncStatus = {
 	agent?: unknown;
 	agents?: unknown;
 	model?: unknown;
+	thinking?: unknown;
+	activityState?: unknown;
 	startedAt?: unknown;
+	lastActivityAt?: unknown;
 	lastUpdate?: unknown;
 	deadlineAt?: unknown;
+	pid?: unknown;
+	currentStep?: unknown;
 	currentTool?: unknown;
 	currentToolArgs?: unknown;
+	currentToolStartedAt?: unknown;
 	currentPath?: unknown;
 	recentOutput?: unknown;
 	recentTools?: unknown;
@@ -159,7 +175,12 @@ function formatTool(
 	const toolName = asString(tool);
 	if (!toolName) return "working";
 	const pathValue = asString(currentPath);
-	if (pathValue) return `${toolName} ${shortenPath(pathValue)}`;
+	if (pathValue) {
+		const argsText = preview(args, 64);
+		return argsText
+			? `${toolName} ${shortenPath(pathValue)} · ${argsText}`
+			: `${toolName} ${shortenPath(pathValue)}`;
+	}
 	const argsText = preview(args, 90);
 	return argsText ? `${toolName} ${argsText}` : toolName;
 }
@@ -199,23 +220,42 @@ function statusSteps(status: AsyncStatus | undefined): AsyncStep[] {
 		.filter((step): step is AsyncStep => Boolean(step));
 }
 
+function observedSteps(run: TrackedRun, status: AsyncStatus | undefined): AsyncStep[] {
+	const persisted = statusSteps(status);
+	if (persisted.length > 0) return persisted;
+	return [...run.stepSnapshots.values()]
+		.map((snapshot) => snapshot.latest)
+		.filter((step): step is AsyncStep => Boolean(step));
+}
+
 function runIdentity(
 	run: TrackedRun,
 	status: AsyncStatus | undefined,
-): { roles: string[]; models: string[] } {
+): { roles: string[]; models: string[]; thinkings: string[] } {
 	const data = asObject(status);
-	const steps = statusSteps(status);
+	const steps = observedSteps(run, status);
 	const runningSteps = steps.filter(
-		(step) => asString(step.status) === "running",
+		(step) => ["pending", "queued", "running"].includes(asString(step.status) ?? "running"),
 	);
-	const identitySteps = runningSteps.length > 0 ? runningSteps : steps.slice(0, 1);
+	const identitySteps = runningSteps.length > 0 ? runningSteps : steps.slice(-1);
 	const roles = [
-		...new Set(identitySteps.map((step) => formatAgent(step.agent, run.label))),
+		...new Set(
+			identitySteps.map((step) =>
+				formatAgent(step.agent ?? step.label, run.label),
+			),
+		),
 	];
 	const models = [
 		...new Set(
 			identitySteps
 				.map((step) => asString(step.model))
+				.filter((value): value is string => Boolean(value)),
+		),
+	];
+	const thinkings = [
+		...new Set(
+			identitySteps
+				.map((step) => asString(step.thinking))
 				.filter((value): value is string => Boolean(value)),
 		),
 	];
@@ -225,7 +265,11 @@ function runIdentity(
 		const model = run.model ?? asString(data?.model);
 		if (model) models.push(model);
 	}
-	return { roles, models };
+	if (thinkings.length === 0) {
+		const thinking = asString(data?.thinking);
+		if (thinking) thinkings.push(thinking);
+	}
+	return { roles, models, thinkings };
 }
 
 function latestActivityAt(
@@ -235,11 +279,27 @@ function latestActivityAt(
 ): number {
 	const data = asObject(status);
 	const timestamps = [
-		asFiniteNumber(data?.startedAt),
+		...steps.flatMap((step) => [
+			asFiniteNumber(step.lastActivityAt),
+			asFiniteNumber(step.currentToolStartedAt),
+		]),
+		asFiniteNumber(data?.lastActivityAt),
+		asFiniteNumber(data?.currentToolStartedAt),
 		asFiniteNumber(data?.lastUpdate),
-		...steps.map((step) => asFiniteNumber(step.lastActivityAt)),
+		asFiniteNumber(data?.startedAt),
 	].filter((value): value is number => value !== undefined);
 	return timestamps.length > 0 ? Math.max(...timestamps) : run.startedAt;
+}
+
+function processAlive(value: unknown): boolean | undefined {
+	const pid = asFiniteNumber(value);
+	if (pid === undefined || !Number.isInteger(pid) || pid <= 0) return undefined;
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return asObject(error)?.code === "EPERM";
+	}
 }
 
 function latestOutput(
@@ -268,43 +328,120 @@ function runDetailLines(
 	now: number,
 ): string[] {
 	const data = asObject(status);
-	const steps = statusSteps(status);
-	const currentIndex = steps.findIndex(
-		(step) => asString(step.status) === "running",
-	);
-	const currentStep = steps[Math.max(0, currentIndex)];
-	const tool = currentStep?.currentTool ?? data?.currentTool;
-	const args = currentStep?.currentToolArgs ?? data?.currentToolArgs;
-	const currentPath = currentStep?.currentPath ?? data?.currentPath;
-	const activity = formatTool(tool, args, currentPath);
-	const label = formatAgent(
-		currentStep?.agent ?? data?.agent ?? data?.agents,
-		run.label,
-	);
-	const startedAt = asFiniteNumber(data?.startedAt) ?? run.startedAt;
-	const lastActivity = latestActivityAt(run, status, steps);
-	const idleFor = Math.max(0, now - lastActivity);
-	let marker = "●";
-	if (idleFor >= STALL_CRITICAL_MS) marker = "⛔ stalled";
-	else if (idleFor >= STALL_WARNING_MS) marker = "⚠ idle";
-	const lines = [
-		`${marker} ${label} · ${run.state} · up ${formatDuration(now - startedAt)} · last ${formatDuration(idleFor)} ago`,
-	];
-	if (activity !== "working") lines.push(`  tool: ${activity}`);
-	const counters: string[] = [];
-	if (steps.length > 0)
-		counters.push(`step ${Math.max(0, currentIndex) + 1}/${steps.length}`);
+	const observed = observedSteps(run, status);
+	const candidates = observed.map((step, index) => ({ step, index }));
+	const activeCandidates = candidates.filter(({ step }) => {
+		const state = asString(step.status);
+		return (
+			state === undefined ||
+			state === "pending" ||
+			state === "queued" ||
+			state === "running"
+		);
+	});
+	const displayCandidates: Array<{ step?: AsyncStep; index: number }> =
+		activeCandidates.length > 0 ? activeCandidates : candidates.slice(-1);
+	if (displayCandidates.length === 0) displayCandidates.push({ index: -1 });
+
+	const currentIndex = asFiniteNumber(data?.currentStep);
+	const runStartedAt = asFiniteNumber(data?.startedAt) ?? run.startedAt;
 	const mode = asString(data?.mode);
-	if (mode) counters.push(`mode ${mode}`);
-	const toolCount = asFiniteNumber(currentStep?.toolCount ?? data?.toolCount);
-	if (toolCount !== undefined) counters.push(`tools ${toolCount}`);
-	const turnCount = asFiniteNumber(currentStep?.turnCount ?? data?.turnCount);
-	if (turnCount !== undefined) counters.push(`turns ${turnCount}`);
-	if (counters.length > 0) lines.push(`  ${counters.join(" · ")}`);
-	const output = latestOutput(status, steps);
-	if (output) lines.push(`  ↳ ${output}`);
-	if (idleFor >= STALL_WARNING_MS)
-		lines.push(`  no status update for ${formatDuration(idleFor)}`);
+	const pidState = processAlive(data?.pid);
+	const lines: string[] = [];
+
+	for (const candidate of displayCandidates) {
+		const step = candidate.step;
+		const isCurrent =
+			candidate.index === currentIndex ||
+			(currentIndex === undefined && displayCandidates.length === 1);
+		const state =
+			asString(step?.status) ??
+			(isCurrent ? asString(data?.state) : undefined) ??
+			run.state;
+		const normalizedState = state.toLowerCase();
+		const canStall = normalizedState === "running" || normalizedState === "working";
+		const activityState =
+			asString(step?.activityState) ??
+			(isCurrent ? asString(data?.activityState) : undefined);
+		const startedAt =
+			asFiniteNumber(step?.startedAt) ??
+			(isCurrent ? runStartedAt : undefined) ??
+			runStartedAt;
+		const lastActivity =
+			asFiniteNumber(step?.lastActivityAt) ??
+			asFiniteNumber(step?.currentToolStartedAt) ??
+			(canStall ? latestActivityAt(run, status, step ? [step] : []) : run.startedAt);
+		const idleFor = Math.max(0, now - lastActivity);
+		let prefix = ">";
+		let marker = "RUN";
+		if (normalizedState === "pending" || normalizedState === "queued") {
+			prefix = "?";
+			marker = "WAIT";
+		} else if (["failed", "rejected", "stopped"].includes(normalizedState)) {
+			prefix = "x";
+			marker = "FAIL";
+		} else if (["complete", "completed"].includes(normalizedState)) {
+			prefix = "+";
+			marker = "DONE";
+		} else if (activityState?.includes("blocked") || activityState?.includes("attention")) {
+			prefix = "!";
+			marker = "ATTN";
+		} else if (canStall && idleFor >= STALL_CRITICAL_MS) {
+			prefix = pidState === false ? "x" : "!";
+			marker = pidState === false ? "DEAD" : "STALLED";
+		} else if (canStall && idleFor >= STALL_WARNING_MS) {
+			prefix = "~";
+			marker = "IDLE";
+		}
+
+		const label = formatAgent(
+			step?.agent ?? step?.label ?? (isCurrent ? data?.agent ?? data?.agents : undefined),
+			run.label,
+		);
+		const parts = [
+			`${prefix} ${marker} ${label}`,
+			state,
+			`up ${formatDuration(now - startedAt)}`,
+			`last ${formatDuration(idleFor)} ago`,
+		];
+		if (observed.length > 1 && candidate.index >= 0)
+			parts.push(`step ${candidate.index + 1}/${observed.length}`);
+		const model = asString(step?.model) ?? (isCurrent ? run.model ?? asString(data?.model) : undefined);
+		if (model) parts.push(`model ${preview(model, 42)}`);
+		const thinking = asString(step?.thinking) ?? (isCurrent ? asString(data?.thinking) : undefined);
+		if (thinking) parts.push(`thinking ${thinking}`);
+		if (activityState && activityState !== state) parts.push(`activity ${activityState}`);
+		if (mode && observed.length <= 1) parts.push(`mode ${mode}`);
+		const toolCount = asFiniteNumber(step?.toolCount ?? (isCurrent ? data?.toolCount : undefined));
+		if (toolCount !== undefined) parts.push(`tools ${toolCount}`);
+		const turnCount = asFiniteNumber(step?.turnCount ?? (isCurrent ? data?.turnCount : undefined));
+		if (turnCount !== undefined) parts.push(`turns ${turnCount}`);
+		lines.push(parts.join(" · "));
+
+		const description = asString(step?.description) ?? asString(step?.task);
+		if (description) lines.push(`  task: ${preview(description, 140)}`);
+		const tool = step?.currentTool ?? (isCurrent ? data?.currentTool : undefined);
+		const args = step?.currentToolArgs ?? (isCurrent ? data?.currentToolArgs : undefined);
+		const currentPath = step?.currentPath ?? (isCurrent ? data?.currentPath : undefined);
+		const activity = formatTool(tool, args, currentPath);
+		if (activity !== "working") lines.push(`  tool: ${activity}`);
+		else {
+			const recent = asArray(step?.recentTools)
+				.map(asObject)
+				.filter((value): value is Record<string, unknown> => Boolean(value))
+				.at(-1);
+			const recentTool = recent
+				? formatTool(recent.tool, recent.args, recent.path)
+				: undefined;
+			if (recentTool && recentTool !== "working") lines.push(`  recent: ${recentTool}`);
+		}
+		const output = step ? latestOutput(undefined, [step]) : latestOutput(status, []);
+		if (output) lines.push(`  output: ${output}`);
+		if (canStall && idleFor >= STALL_WARNING_MS) {
+			const processHint = pidState === false ? "; process not found" : "";
+			lines.push(`  no child progress for ${formatDuration(idleFor)}${processHint}`);
+		}
+	}
 	return lines;
 }
 
@@ -398,18 +535,36 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		return [...runs.values()].filter((run) => !terminalState(run.state));
 	}
 
+	function activeChildCount(active: TrackedRun[]): number {
+		return active.reduce((count, run) => {
+			const status = run.asyncDir ? readStatus(run.asyncDir) : undefined;
+			const steps = observedSteps(run, status);
+			const runningSteps = steps.filter((step) => {
+				const state = asString(step.status);
+				return (
+					state === undefined ||
+					state === "pending" ||
+					state === "queued" ||
+					state === "running"
+				);
+			});
+			return count + Math.max(1, runningSteps.length);
+		}, 0);
+	}
+
 	function updateStatus(): void {
 		if (!currentCtx?.hasUI || currentCtx.mode !== "tui") return;
-		const active = activeRuns().length;
-		if (active === 0) {
+		const active = activeRuns();
+		const childCount = activeChildCount(active);
+		if (childCount === 0) {
 			currentCtx.ui.setStatus(STATUS_ID, undefined);
 			return;
 		}
 		let suffix = "";
 		if (paused) suffix = " paused";
 		else if (!visible) suffix = " off";
-		const plural = active === 1 ? "" : "s";
-		currentCtx.ui.setStatus(STATUS_ID, `${active} subagent${plural}${suffix}`);
+		const plural = childCount === 1 ? "" : "s";
+		currentCtx.ui.setStatus(STATUS_ID, `${childCount} subagent${plural}${suffix}`);
 	}
 
 	function renderPanel(width: number, theme: ThemeLike): string[] {
@@ -421,6 +576,7 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 			run,
 			status: run.asyncDir ? readStatus(run.asyncDir) : undefined,
 		}));
+		const activeChildTotal = activeChildCount(active);
 		const identities = activeStatuses.map(({ run, status }) =>
 			runIdentity(run, status),
 		);
@@ -430,33 +586,43 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		const models = [
 			...new Set(identities.flatMap((identity) => identity.models)),
 		];
+		const thinkings = [
+			...new Set(identities.flatMap((identity) => identity.thinkings)),
+		];
 		const identitySuffix =
 			active.length > 0
-				? ` · role ${roles.join("+") || "unknown"} · model ${models.join("+") || "unknown"}`
+				? ` · role ${roles.join("+") || "unknown"} · model ${models.join("+") || "unknown"} · thinking ${thinkings.join("+") || "unknown"}`
 				: "";
 		const lines: string[] = [];
-		const activeLabel = active.length > 0 ? `${active.length} active` : "idle";
+		const activeLabel = active.length > 0
+			? `${activeChildTotal} active${active.length !== activeChildTotal ? ` · ${active.length} ${active.length === 1 ? "run" : "runs"}` : ""}`
+			: "idle";
 		lines.push(
 			theme.fg(
 				"accent",
-				`▣ subagent tail · ${activeLabel} · poll ${POLL_INTERVAL_MS}ms${identitySuffix}${paused ? " · paused" : ""}`,
+				`• subagent tail · ${activeLabel} · poll ${POLL_INTERVAL_MS}ms${identitySuffix}${paused ? " · paused" : ""}`,
 			),
 		);
 
 		const now = Date.now();
-		for (const { run, status } of activeStatuses.slice(0, 4)) {
+		for (const { run, status } of activeStatuses) {
 			for (const detail of runDetailLines(run, status, now)) {
-				let color: ThemeColor = "muted";
-				if (detail.startsWith("⛔")) color = "error";
-				else if (detail.startsWith("⚠")) color = "accent";
-				lines.push(theme.fg(color, detail));
+				const markerColors: Record<string, ThemeColor> = {
+					">": "success",
+					"?": "accent",
+					"!": "accent",
+					"~": "accent",
+					x: "error",
+					"+": "success",
+				};
+				const markerColor = markerColors[detail[0]];
+				if (markerColor)
+					lines.push(theme.fg(markerColor, detail[0]) + theme.fg("muted", detail.slice(1)));
+				else lines.push(theme.fg("muted", detail));
 			}
 		}
-		if (active.length > 4)
-			lines.push(theme.fg("dim", `  +${active.length - 4} more subagents`));
 
-		const available = Math.max(0, tailLines - lines.length);
-		const tail = logs.slice(-available);
+		const tail = logs.slice(-tailLines);
 		for (const entry of tail) {
 			let color: ThemeColor = "text";
 			switch (entry.level) {
@@ -472,15 +638,12 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 				default:
 					break;
 			}
-			lines.push(theme.fg(color, `  ${entry.text}`));
+			lines.push(theme.fg(color, `  • ${entry.text}`));
 		}
 
-		const limit = Math.max(1, tailLines);
-		const content =
-			lines.length > limit ? [lines[0], ...lines.slice(-(limit - 1))] : lines;
 		return [
 			...Array.from({ length: TOP_GAP_LINES }, () => ""),
-			...content.map((line) => truncateToWidth(line, Math.max(1, width), "")),
+			...lines.map((line) => truncateToWidth(line, Math.max(1, width), "")),
 			...Array.from({ length: BOTTOM_GAP_LINES }, () => ""),
 		];
 	}
@@ -578,25 +741,30 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		if (!run.terminalLogged) {
 			appendLog(
 				`${state} ${run.label} [${id}]`,
-				state === "complete" ? "success" : "error",
+				state === "complete" || state === "completed" ? "success" : "error",
 			);
 			run.terminalLogged = true;
 		}
 		refreshUi();
 	}
 
-	function appendNewOutput(run: TrackedRun, key: string, value: unknown): void {
+	function appendNewOutput(
+		run: TrackedRun,
+		key: string,
+		value: unknown,
+		label = run.label,
+	): void {
 		const lines = asArray(value).map(sanitizeLine).filter(Boolean);
 		if (lines.length === 0) return;
 		const previous = run.stepSnapshots.get(key) ?? { output: [] };
-		let start = Math.max(0, lines.length - 3);
+		let start = Math.max(0, lines.length - OUTPUT_LINES_PER_UPDATE);
 		const previousLast = previous.output.at(-1);
 		if (previousLast) {
 			const index = lines.lastIndexOf(previousLast);
 			if (index >= 0) start = index + 1;
 		}
 		for (const line of lines.slice(start))
-			appendLog(`${run.label}: ${line}`, "dim");
+			appendLog(`${label}: ${line}`, "dim");
 		previous.output = lines.slice(-50);
 		run.stepSnapshots.set(key, previous);
 	}
@@ -609,17 +777,22 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		const key = `step:${index}`;
 		const previous = run.stepSnapshots.get(key) ?? { output: [] };
 		const currentTool = asString(step.currentTool);
-		if (currentTool && currentTool !== previous.tool) {
+		const label = formatAgent(step.agent ?? step.label, run.label);
+		const toolActivity = currentTool
+			? formatTool(currentTool, step.currentToolArgs, step.currentPath)
+			: undefined;
+		if (toolActivity && toolActivity !== previous.tool) {
 			appendLog(
-				`${formatAgent(step.agent, run.label)} → ${formatTool(currentTool, step.currentToolArgs, step.currentPath)}`,
+				`${label} -> ${toolActivity}`,
 				"info",
 			);
 		}
-		if (!currentTool && previous.tool)
-			appendLog(`${formatAgent(step.agent, run.label)} ← tool finished`, "dim");
-		previous.tool = currentTool;
+		if (!toolActivity && previous.tool)
+			appendLog(`${label} <- tool finished`, "dim");
+		previous.tool = toolActivity;
+		previous.latest = step;
 		run.stepSnapshots.set(key, previous);
-		appendNewOutput(run, key, step.recentOutput);
+		appendNewOutput(run, key, step.recentOutput, label);
 	}
 
 	function updateAsyncRun(run: TrackedRun, status: AsyncStatus): boolean {
@@ -683,7 +856,7 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 	function discoverExistingRuns(ctx: ExtensionContext): void {
 		const sessionId = (() => {
 			try {
-				return ctx.sessionManager.getSessionId();
+				return ctx.sessionManager.getSessionFile() ?? ctx.sessionManager.getSessionId();
 			} catch {
 				return undefined;
 			}
@@ -706,7 +879,11 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 					const asyncDir = path.join(root, entry.name);
 					const status = readStatus(asyncDir);
 					const data = asObject(status);
-					if (!data || asString(data.state) !== "running") continue;
+					const state = asString(data?.state);
+					if (!data || !["queued", "running"].includes(state ?? "")) continue;
+					const pid = asFiniteNumber(data.pid);
+					if (state === "running" && pid !== undefined && processAlive(pid) === false)
+						continue;
 					if (
 						sessionId &&
 						asString(data.sessionId) &&
@@ -867,8 +1044,8 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("subagent-tail", {
-		description: "切换子代理实时滚动面板：on/off/pause/resume/clear/lines N",
-		handler: (args, ctx) => {
+		description: "切换子代理面板：on/off/pause/resume/clear/lines N（N 为底部滚动日志行数）",
+		handler: async (args, ctx) => {
 			const [command, value] = args.trim().split(/\s+/, 2);
 			switch ((command || "toggle").toLowerCase()) {
 				case "on":
