@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/gotgenes/pi-packages/main/packages/pi-permission-system/schemas/permissions.schema.json",
   "debugLog": false,
   "permissionReviewLog": true,
   "yoloMode": true,
@@ -20,8 +21,44 @@
     "grep": "allow",
     "find": "allow",
     "ls": "allow",
-    "write": "ask",
-    "edit": "ask",
+    "write": {
+      "*": "ask",
+      "migrations": {
+        "action": "deny",
+        "reason": "禁止直接写入 Django migrations 文件；请由人工审查后生成。"
+      },
+      "migrations/*": {
+        "action": "deny",
+        "reason": "禁止直接写入 Django migrations 文件；请由人工审查后生成。"
+      },
+      "*/migrations": {
+        "action": "deny",
+        "reason": "禁止直接写入 Django migrations 文件；请由人工审查后生成。"
+      },
+      "*/migrations/*": {
+        "action": "deny",
+        "reason": "禁止直接写入 Django migrations 文件；请由人工审查后生成。"
+      }
+    },
+    "edit": {
+      "*": "ask",
+      "migrations": {
+        "action": "deny",
+        "reason": "禁止直接修改 Django migrations 文件；请由人工审查后生成。"
+      },
+      "migrations/*": {
+        "action": "deny",
+        "reason": "禁止直接修改 Django migrations 文件；请由人工审查后生成。"
+      },
+      "*/migrations": {
+        "action": "deny",
+        "reason": "禁止直接修改 Django migrations 文件；请由人工审查后生成。"
+      },
+      "*/migrations/*": {
+        "action": "deny",
+        "reason": "禁止直接修改 Django migrations 文件；请由人工审查后生成。"
+      }
+    },
     "mcp": {
       "*": "ask",
       "mcp_status": "allow",
@@ -85,7 +122,39 @@
       "git stash show*": "allow",
       "git config --get*": "allow",
       "git config --list*": "allow",
-      "*>*": "ask"
+      "*>*": "ask",
+      "* makemigrations *": {
+        "action": "deny",
+        "reason": "禁止执行 Django makemigrations。"
+      },
+      "makemigrations *": {
+        "action": "deny",
+        "reason": "禁止执行 Django makemigrations。"
+      },
+      "* migrate *": {
+        "action": "deny",
+        "reason": "禁止执行 Django migrate。"
+      },
+      "migrate *": {
+        "action": "deny",
+        "reason": "禁止执行 Django migrate。"
+      },
+      "* squashmigrations *": {
+        "action": "deny",
+        "reason": "禁止执行 Django squashmigrations，避免直接生成或重写 migrations 文件。"
+      },
+      "squashmigrations *": {
+        "action": "deny",
+        "reason": "禁止执行 Django squashmigrations，避免直接生成或重写 migrations 文件。"
+      },
+      "* optimizemigration *": {
+        "action": "deny",
+        "reason": "禁止执行 Django optimizemigration，避免直接修改 migrations 文件。"
+      },
+      "optimizemigration *": {
+        "action": "deny",
+        "reason": "禁止执行 Django optimizemigration，避免直接修改 migrations 文件。"
+      }
     },
     "external_directory": {
       "*": "ask",
