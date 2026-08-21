@@ -1,6 +1,7 @@
 {
 	"artifactDir": "session",
+	"asyncByDefault": true,
 	"waitTool": {
-		"enabled": false
+		"enabled": true
 	}
 }

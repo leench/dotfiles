@@ -5,7 +5,6 @@ model: opencode-go/mimo-v2.5
 tools: read, bash, ls, find
 thinking: low
 systemPromptMode: replace
-async: false
 skills: false
 ---
 

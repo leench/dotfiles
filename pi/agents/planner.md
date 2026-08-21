@@ -5,7 +5,6 @@ model: openai-codex/gpt-5.6-sol
 tools: read, grep, find, ls
 thinking: high
 systemPromptMode: replace
-async: false
 skills: false
 defaultContext: fork
 ---

@@ -5,7 +5,6 @@ model: openai-codex/gpt-5.6-luna
 tools: read, grep, find, ls, bash
 thinking: high
 systemPromptMode: replace
-async: true
 skills: false
 defaultContext: fork
 ---

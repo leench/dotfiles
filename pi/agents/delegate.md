@@ -4,7 +4,6 @@ description: 轻量子代理，继承父模型且无默认读取
 model: opencode-go/mimo-v2.5
 thinking: low
 systemPromptMode: append
-async: false
 tools: read, grep, find, ls, bash, edit, write
 skills: false
 ---

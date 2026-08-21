@@ -4,7 +4,6 @@ description: 通用执行 agent，拥有全部工具能力，在隔离上下文�
 model: openai-codex/gpt-5.6-luna
 thinking: high
 systemPromptMode: replace
-async: true
 defaultContext: fork
 skills: find-docs
 ---
