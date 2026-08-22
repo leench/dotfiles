@@ -172,9 +172,9 @@ type ThemeLike = {
 
 // Keep role colors separate from the header's `accent` color.
 const ROLE_COLORS: ThemeColor[] = [
-	"mdLink",
 	"syntaxString",
 	"customMessageLabel",
+	"mdLink",
 	"success",
 	"error",
 	"warning",
@@ -188,6 +188,20 @@ const ROLE_COLORS: ThemeColor[] = [
 	"thinkingLow",
 	"syntaxKeyword",
 ];
+
+const ROLE_COLOR_BY_NAME: Record<string, ThemeColor> = {
+	reviewer: "syntaxString",
+	planner: "customMessageLabel",
+	worker: "mdLink",
+	scout: "text",
+	vision: "error",
+	researcher: "warning",
+	advisor: "syntaxFunction",
+	"context-builder": "syntaxNumber",
+	delegate: "syntaxVariable",
+	oracle: "syntaxType",
+	"reviewer-adv": "thinkingMax",
+};
 
 type AsyncReference = {
 	id: string;
@@ -811,7 +825,10 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		];
 		const roleColors = new Map<string, ThemeColor>();
 		for (const [index, role] of roles.entries())
-			roleColors.set(role, ROLE_COLORS[index % ROLE_COLORS.length]);
+			roleColors.set(
+				role,
+				ROLE_COLOR_BY_NAME[role] ?? ROLE_COLORS[index % ROLE_COLORS.length],
+			);
 		const lines: string[] = [];
 		const activeLabel = active.length > 0
 			? `${activeChildTotal} active${active.length !== activeChildTotal ? ` · ${active.length} ${active.length === 1 ? "run" : "runs"}` : ""}`
@@ -852,7 +869,9 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 					const markerColor = markerColors[detail.prefix] ?? "muted";
 					let roleColor = roleColors.get(detail.label);
 					if (!roleColor) {
-						roleColor = ROLE_COLORS[roleColors.size % ROLE_COLORS.length];
+						roleColor =
+							ROLE_COLOR_BY_NAME[detail.label] ??
+							ROLE_COLORS[roleColors.size % ROLE_COLORS.length];
 						roleColors.set(detail.label, roleColor);
 					}
 					lines.push(
