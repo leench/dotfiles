@@ -2,7 +2,7 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -33,6 +33,29 @@ type LogEntry = {
 	level: LogLevel;
 };
 
+type DetailLine =
+	| {
+			kind: "status";
+			prefix: string;
+			marker: string;
+			label: string;
+			suffix: string;
+	  }
+	| { kind: "text"; text: string };
+
+type TokenUsage = {
+	input: number;
+	output: number;
+	total: number;
+};
+
+type SessionTokenSnapshot = {
+	startedAt: number;
+	offset: number;
+	remainder: string;
+	usage: TokenUsage;
+};
+
 type StepSnapshot = {
 	tool?: string;
 	output: string[];
@@ -59,6 +82,10 @@ type AsyncStep = {
 	lastActivityAt?: unknown;
 	toolCount?: unknown;
 	turnCount?: unknown;
+	sessionFile?: unknown;
+	tokens?: unknown;
+	totalTokens?: unknown;
+	usage?: unknown;
 };
 
 type AsyncStatus = {
@@ -84,6 +111,11 @@ type AsyncStatus = {
 	recentTools?: unknown;
 	toolCount?: unknown;
 	turnCount?: unknown;
+	sessionFile?: unknown;
+	totalTokens?: unknown;
+	tokens?: unknown;
+	usage?: unknown;
+	n?: unknown;
 	steps?: unknown;
 };
 
@@ -98,13 +130,51 @@ type TrackedRun = {
 	finishedAt?: number;
 	terminalLogged: boolean;
 	stepSnapshots: Map<string, StepSnapshot>;
+	sessionTokenSnapshots: Map<string, SessionTokenSnapshot>;
 };
 
-type ThemeColor = "accent" | "muted" | "success" | "error" | "dim" | "text";
+type ThemeColor =
+	| "accent"
+	| "muted"
+	| "success"
+	| "error"
+	| "dim"
+	| "text"
+	| "warning"
+	| "syntaxFunction"
+	| "syntaxType"
+	| "syntaxString"
+	| "syntaxNumber"
+	| "mdLink"
+	| "toolTitle"
+	| "customMessageLabel";
+
+type ThemeBackground =
+	| "selectedBg"
+	| "searchMatchBg"
+	| "userMessageBg"
+	| "customMessageBg"
+	| "toolPendingBg"
+	| "toolSuccessBg"
+	| "toolErrorBg";
 
 type ThemeLike = {
 	fg: (color: ThemeColor, text: string) => string;
+	bg: (color: ThemeBackground, text: string) => string;
 };
+
+const ROLE_COLORS: ThemeColor[] = [
+	"accent",
+	"success",
+	"warning",
+	"syntaxFunction",
+	"syntaxType",
+	"syntaxString",
+	"syntaxNumber",
+	"mdLink",
+	"toolTitle",
+	"customMessageLabel",
+];
 
 type AsyncReference = {
 	id: string;
@@ -201,6 +271,124 @@ function asFiniteNumber(value: unknown): number | undefined {
 	if (typeof value !== "string" || value.trim() === "") return undefined;
 	const parsed = Number(value);
 	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function tokenUsage(value: unknown): TokenUsage | undefined {
+	const data = asObject(value);
+	if (!data) return undefined;
+	const input = asFiniteNumber(
+		data.input ?? data.inputTokens ?? data.prompt ?? data.promptTokens,
+	);
+	const output = asFiniteNumber(
+		data.output ?? data.outputTokens ?? data.completion ?? data.completionTokens,
+	);
+	const total = asFiniteNumber(data.total ?? data.totalTokens);
+	if (input === undefined && output === undefined && total === undefined)
+		return undefined;
+	return {
+		input: input ?? 0,
+		output: output ?? 0,
+		total: total ?? (input ?? 0) + (output ?? 0),
+	};
+}
+
+function addTokenUsage(left: TokenUsage, right: TokenUsage): TokenUsage {
+	return {
+		input: left.input + right.input,
+		output: left.output + right.output,
+		total: left.total + right.total,
+	};
+}
+
+function formatTokenCount(value: number): string {
+	const count = Math.max(0, Math.round(value));
+	if (count >= 1_000_000)
+		return `${(count / 1_000_000).toFixed(count < 10_000_000 ? 1 : 0).replace(/\.0$/, "")}m`;
+	if (count >= 1_000)
+		return `${(count / 1_000).toFixed(count < 10_000 ? 1 : 0).replace(/\.0$/, "")}k`;
+	return String(count);
+}
+
+function formatTokenUsage(usage: TokenUsage): string {
+	return `↑${formatTokenCount(usage.input)} ↓${formatTokenCount(usage.output)}`;
+}
+
+function safeSessionFile(value: unknown): string | undefined {
+	const raw = asString(value);
+	if (!raw) return undefined;
+	const resolved = path.resolve(raw);
+	const sessionsRoot = path.resolve(os.homedir(), ".pi", "agent", "sessions");
+	return resolved === sessionsRoot || resolved.startsWith(`${sessionsRoot}${path.sep}`)
+		? resolved
+		: undefined;
+}
+
+function sessionLineUsage(line: string, startedAt: number): TokenUsage | undefined {
+	try {
+		const data = asObject(JSON.parse(line));
+		if (!data) return undefined;
+		const message = asObject(data.message);
+		const timestamp = asString(data.timestamp) ?? asString(message?.timestamp);
+		if (timestamp) {
+			const timestampMs = Date.parse(timestamp);
+			if (Number.isFinite(timestampMs) && timestampMs < startedAt) return undefined;
+		}
+		return tokenUsage(data.usage ?? message?.usage);
+	} catch {
+		return undefined;
+	}
+}
+
+function readSessionUsage(
+	run: TrackedRun,
+	fileValue: unknown,
+	startedAt: number,
+): TokenUsage | undefined {
+	const sessionFile = safeSessionFile(fileValue);
+	if (!sessionFile) return undefined;
+	let stat: fs.Stats;
+	try {
+		stat = fs.statSync(sessionFile);
+	} catch {
+		return undefined;
+	}
+	let snapshot = run.sessionTokenSnapshots.get(sessionFile);
+	if (!snapshot || snapshot.startedAt !== startedAt || stat.size < snapshot.offset) {
+		snapshot = {
+			startedAt,
+			offset: 0,
+			remainder: "",
+			usage: { input: 0, output: 0, total: 0 },
+		};
+	}
+	if (stat.size > snapshot.offset) {
+		let fileDescriptor: number | undefined;
+		try {
+			const length = stat.size - snapshot.offset;
+			const buffer = Buffer.allocUnsafe(length);
+			fileDescriptor = fs.openSync(sessionFile, "r");
+			fs.readSync(fileDescriptor, buffer, 0, length, snapshot.offset);
+			const lines = `${snapshot.remainder}${buffer.toString("utf8")}`.split("\n");
+			snapshot.remainder = lines.pop() ?? "";
+			for (const line of lines) {
+				const usage = sessionLineUsage(line, startedAt);
+				if (usage) snapshot.usage = addTokenUsage(snapshot.usage, usage);
+			}
+			snapshot.offset = stat.size;
+		} catch {
+			// Session files are append-only and best-effort; retry on the next poll.
+		} finally {
+			if (fileDescriptor !== undefined) {
+				try {
+					fs.closeSync(fileDescriptor);
+				} catch {
+					// Best effort.
+				}
+			}
+		}
+	}
+	run.sessionTokenSnapshots.set(sessionFile, snapshot);
+	return snapshot.usage.total > 0 ? snapshot.usage : undefined;
 }
 
 function formatDuration(milliseconds: number): string {
@@ -326,7 +514,7 @@ function runDetailLines(
 	run: TrackedRun,
 	status: AsyncStatus | undefined,
 	now: number,
-): string[] {
+): DetailLine[] {
 	const data = asObject(status);
 	const observed = observedSteps(run, status);
 	const candidates = observed.map((step, index) => ({ step, index }));
@@ -347,7 +535,7 @@ function runDetailLines(
 	const runStartedAt = asFiniteNumber(data?.startedAt) ?? run.startedAt;
 	const mode = asString(data?.mode);
 	const pidState = processAlive(data?.pid);
-	const lines: string[] = [];
+	const lines: DetailLine[] = [];
 
 	for (const candidate of displayCandidates) {
 		const step = candidate.step;
@@ -399,32 +587,47 @@ function runDetailLines(
 			run.label,
 		);
 		const parts = [
-			`${prefix} ${marker} ${label}`,
-			state,
+			run.foreground ? "sync" : "async",
 			`up ${formatDuration(now - startedAt)}`,
 			`last ${formatDuration(idleFor)} ago`,
 		];
 		if (observed.length > 1 && candidate.index >= 0)
 			parts.push(`step ${candidate.index + 1}/${observed.length}`);
 		const model = asString(step?.model) ?? (isCurrent ? run.model ?? asString(data?.model) : undefined);
-		if (model) parts.push(`model ${preview(model, 42)}`);
 		const thinking = asString(step?.thinking) ?? (isCurrent ? asString(data?.thinking) : undefined);
-		if (thinking) parts.push(`thinking ${thinking}`);
-		if (activityState && activityState !== state) parts.push(`activity ${activityState}`);
-		if (mode && observed.length <= 1) parts.push(`mode ${mode}`);
+		if (model) parts.push(`model ${preview(model, 42)}${thinking ? ` ${thinking}` : ""}`);
+		else if (thinking) parts.push(thinking);
+		if (activityState && activityState !== state) parts.push(activityState);
+		if (mode && observed.length <= 1) parts.push(mode);
 		const toolCount = asFiniteNumber(step?.toolCount ?? (isCurrent ? data?.toolCount : undefined));
 		if (toolCount !== undefined) parts.push(`tools ${toolCount}`);
 		const turnCount = asFiniteNumber(step?.turnCount ?? (isCurrent ? data?.turnCount : undefined));
 		if (turnCount !== undefined) parts.push(`turns ${turnCount}`);
-		lines.push(parts.join(" · "));
+		const sessionFile = step?.sessionFile ?? (isCurrent ? data?.sessionFile : undefined);
+		const usage =
+			tokenUsage(step?.tokens ?? step?.totalTokens ?? step?.usage) ??
+			(isCurrent
+				? tokenUsage(data?.totalTokens ?? data?.tokens ?? data?.usage ?? data?.n)
+				: undefined) ??
+			readSessionUsage(run, sessionFile, startedAt);
+		if (usage) parts.push(formatTokenUsage(usage));
+		lines.push({
+			kind: "status",
+			prefix,
+			marker,
+			label,
+			suffix: parts.join(" · "),
+		});
 
 		const description = asString(step?.description) ?? asString(step?.task);
-		if (description) lines.push(`  task: ${preview(description, 140)}`);
+		if (description)
+			lines.push({ kind: "text", text: `  task: ${preview(description, 140)}` });
 		const tool = step?.currentTool ?? (isCurrent ? data?.currentTool : undefined);
 		const args = step?.currentToolArgs ?? (isCurrent ? data?.currentToolArgs : undefined);
 		const currentPath = step?.currentPath ?? (isCurrent ? data?.currentPath : undefined);
 		const activity = formatTool(tool, args, currentPath);
-		if (activity !== "working") lines.push(`  tool: ${activity}`);
+		if (activity !== "working")
+			lines.push({ kind: "text", text: `  tool: ${activity}` });
 		else {
 			const recent = asArray(step?.recentTools)
 				.map(asObject)
@@ -433,13 +636,17 @@ function runDetailLines(
 			const recentTool = recent
 				? formatTool(recent.tool, recent.args, recent.path)
 				: undefined;
-			if (recentTool && recentTool !== "working") lines.push(`  recent: ${recentTool}`);
+			if (recentTool && recentTool !== "working")
+				lines.push({ kind: "text", text: `  recent: ${recentTool}` });
 		}
 		const output = step ? latestOutput(undefined, [step]) : latestOutput(status, []);
-		if (output) lines.push(`  output: ${output}`);
+		if (output) lines.push({ kind: "text", text: `  output: ${output}` });
 		if (canStall && idleFor >= STALL_WARNING_MS) {
 			const processHint = pidState === false ? "; process not found" : "";
-			lines.push(`  no child progress for ${formatDuration(idleFor)}${processHint}`);
+			lines.push({
+				kind: "text",
+				text: `  no child progress for ${formatDuration(idleFor)}${processHint}`,
+			});
 		}
 	}
 	return lines;
@@ -589,36 +796,58 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		const thinkings = [
 			...new Set(identities.flatMap((identity) => identity.thinkings)),
 		];
-		const identitySuffix =
-			active.length > 0
-				? ` · role ${roles.join("+") || "unknown"} · model ${models.join("+") || "unknown"} · thinking ${thinkings.join("+") || "unknown"}`
-				: "";
+		const roleColors = new Map<string, ThemeColor>();
+		for (const [index, role] of roles.entries())
+			roleColors.set(role, ROLE_COLORS[index % ROLE_COLORS.length]);
 		const lines: string[] = [];
 		const activeLabel = active.length > 0
 			? `${activeChildTotal} active${active.length !== activeChildTotal ? ` · ${active.length} ${active.length === 1 ? "run" : "runs"}` : ""}`
 			: "idle";
+		const headerPrefix = `• subagent tail · ${activeLabel} · poll ${POLL_INTERVAL_MS}ms`;
+		const headerIdentity =
+			active.length > 0
+				? theme.fg("accent", " · role ") +
+					(roles.length > 0
+						? roles
+							.map((role) =>
+								theme.fg(roleColors.get(role) ?? "accent", role),
+							)
+							.join(theme.fg("accent", "+"))
+						: theme.fg("accent", "unknown")) +
+					theme.fg(
+						"accent",
+						` · model ${models.join("+") || "unknown"} · thinking ${thinkings.join("+") || "unknown"}`,
+					)
+				: "";
 		lines.push(
-			theme.fg(
-				"accent",
-				`• subagent tail · ${activeLabel} · poll ${POLL_INTERVAL_MS}ms${identitySuffix}${paused ? " · paused" : ""}`,
-			),
+			theme.fg("accent", `${headerPrefix}${paused ? " · paused" : ""}`) +
+				headerIdentity,
 		);
 
+		const markerColors: Record<string, ThemeColor> = {
+			">": "success",
+			"?": "accent",
+			"!": "accent",
+			"~": "accent",
+			x: "error",
+			"+": "success",
+		};
 		const now = Date.now();
 		for (const { run, status } of activeStatuses) {
 			for (const detail of runDetailLines(run, status, now)) {
-				const markerColors: Record<string, ThemeColor> = {
-					">": "success",
-					"?": "accent",
-					"!": "accent",
-					"~": "accent",
-					x: "error",
-					"+": "success",
-				};
-				const markerColor = markerColors[detail[0]];
-				if (markerColor)
-					lines.push(theme.fg(markerColor, detail[0]) + theme.fg("muted", detail.slice(1)));
-				else lines.push(theme.fg("muted", detail));
+				if (detail.kind === "status") {
+					const markerColor = markerColors[detail.prefix] ?? "muted";
+					let roleColor = roleColors.get(detail.label);
+					if (!roleColor) {
+						roleColor = ROLE_COLORS[roleColors.size % ROLE_COLORS.length];
+						roleColors.set(detail.label, roleColor);
+					}
+					lines.push(
+						theme.fg(markerColor, `${detail.prefix} ${detail.marker}`) +
+							theme.fg(roleColor, ` ${detail.label}`) +
+							theme.fg("muted", ` · ${detail.suffix}`),
+					);
+				} else lines.push(theme.fg("muted", detail.text));
 			}
 		}
 
@@ -641,9 +870,20 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 			lines.push(theme.fg(color, `  • ${entry.text}`));
 		}
 
+		const contentWidth = Math.max(1, width - 2);
+		const blockBackground = (text: string): string =>
+			theme.bg("toolPendingBg", text);
+		const blockLines = lines.map((line) => {
+			const content = truncateToWidth(line, contentWidth, "");
+			const padding = Math.max(0, contentWidth - visibleWidth(content));
+			return blockBackground(` ${content}${" ".repeat(padding)} `);
+		});
+		const blockBlankLine = blockBackground(" ".repeat(contentWidth + 2));
 		return [
 			...Array.from({ length: TOP_GAP_LINES }, () => ""),
-			...lines.map((line) => truncateToWidth(line, Math.max(1, width), "")),
+			blockBlankLine,
+			...blockLines,
+			blockBlankLine,
 			...Array.from({ length: BOTTOM_GAP_LINES }, () => ""),
 		];
 	}
@@ -721,6 +961,7 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 			startedAt: Date.now(),
 			terminalLogged: false,
 			stepSnapshots: new Map(),
+			sessionTokenSnapshots: new Map(),
 		};
 		rememberRun(run);
 		appendLog(
@@ -921,6 +1162,7 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 			startedAt: Date.now(),
 			terminalLogged: false,
 			stepSnapshots: new Map(),
+			sessionTokenSnapshots: new Map(),
 		};
 		rememberRun(run);
 		appendLog("started foreground subagent", "info");
