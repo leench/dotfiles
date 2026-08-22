@@ -2,7 +2,7 @@
 name: worker
 description: 通用执行 agent，拥有全部工具能力，在隔离上下文中运行
 model: openai-codex/gpt-5.6-luna
-thinking: max
+thinking: xhigh
 systemPromptMode: replace
 defaultContext: fork
 skills: find-docs
