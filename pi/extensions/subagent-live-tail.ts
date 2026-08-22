@@ -147,7 +147,14 @@ type ThemeColor =
 	| "syntaxNumber"
 	| "mdLink"
 	| "toolTitle"
-	| "customMessageLabel";
+	| "customMessageLabel"
+	| "syntaxVariable"
+	| "syntaxKeyword"
+	| "mdHeading"
+	| "thinkingLow"
+	| "thinkingHigh"
+	| "thinkingXhigh"
+	| "thinkingMax";
 
 type ThemeBackground =
 	| "selectedBg"
@@ -163,17 +170,23 @@ type ThemeLike = {
 	bg: (color: ThemeBackground, text: string) => string;
 };
 
+// Keep role colors separate from the header's `accent` color.
 const ROLE_COLORS: ThemeColor[] = [
-	"accent",
+	"mdLink",
+	"syntaxString",
+	"customMessageLabel",
 	"success",
+	"error",
 	"warning",
 	"syntaxFunction",
-	"syntaxType",
-	"syntaxString",
 	"syntaxNumber",
-	"mdLink",
-	"toolTitle",
-	"customMessageLabel",
+	"syntaxVariable",
+	"syntaxType",
+	"thinkingMax",
+	"mdHeading",
+	"thinkingXhigh",
+	"thinkingLow",
+	"syntaxKeyword",
 ];
 
 type AsyncReference = {
