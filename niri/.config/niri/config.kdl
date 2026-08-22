@@ -278,8 +278,9 @@ overview {
 // which may be more convenient to use.
 // See the binds section below for more spawn examples.
 
-// This line starts waybar, a commonly used bar for Wayland compositors.
-spawn-sh-at-startup "eval $(gnome-keyring-daemon --start --components=secrets,ssh); dbus-update-activation-environment --all; systemctl --user import-environment"
+// Import niri's Wayland environment after the socket exists, then restart Fcitx5.
+// The xdg-autostart unit can otherwise start before niri is ready and never retry.
+spawn-sh-at-startup "eval $(gnome-keyring-daemon --start --components=secrets,ssh); dbus-update-activation-environment --all; systemctl --user import-environment; systemctl --user restart app-org.fcitx.Fcitx5@autostart.service"
 spawn-sh-at-startup "sleep 3; env XDG_CURRENT_DESKTOP=Unity LC_ALL=zh_CN.UTF-8 1password --silent --ozone-platform-hint=auto --enable-features=WaylandWindowDecorations"
 spawn-at-startup "env" "XDG_CURRENT_DESKTOP=Unity" "/home/niri/hid-host-gui" "--tray"
 spawn-at-startup "vicinae" "server"
