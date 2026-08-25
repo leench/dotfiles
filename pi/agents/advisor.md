@@ -1,7 +1,7 @@
 ---
 name: advisor
 description: oracle 的兼容别名；高上下文决策一致性顾问
-model: openai-codex/gpt-5.6-luna
+model: openai-codex/gpt-5.6-sol
 tools: read, grep, find, ls, bash
 thinking: high
 systemPromptMode: replace
