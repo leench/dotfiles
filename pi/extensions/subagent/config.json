@@ -1,6 +1,8 @@
 {
 	"artifactDir": "session",
 	"asyncByDefault": true,
+	"asyncWidget": false,
+	"fleetView": false,
 	"waitTool": {
 		"enabled": true
 	}

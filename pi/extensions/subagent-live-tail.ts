@@ -7,6 +7,26 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+/**
+ * Native pi-subagents TUI replacement notes (2026-08-26):
+ *
+ * The native asyncWidget/FleetView is disabled in
+ * extensions/subagent/config.json. This panel intentionally does not yet
+ * reproduce every native field. Revisit these gaps before extending it:
+ *
+ * - fresh/fork context badges;
+ * - exact parallel/chain aggregation (running/done counts and parallel groups);
+ * - nested child-run hierarchy and overflow summaries;
+ * - native output-N.log/artifact path hints;
+ * - current-tool elapsed time and native activity wording;
+ * - FleetView window-vs-spent token metrics;
+ * - external jobs and Herdr project-pane entries;
+ * - FleetView keyboard navigation and inspector actions.
+ *
+ * The custom panel already adds session token totals, current path/tool
+ * details, recent output, and stalled/dead-process detection.
+ */
+
 const WIDGET_ID = "subagent-live-tail";
 const STATUS_ID = "subagent-live-tail-status";
 const POLL_INTERVAL_MS = 100;
