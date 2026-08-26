@@ -11,7 +11,7 @@
 
 ## 子代理调用规则
 
-- `pi-subagents` 默认使用后台模式；调用时省略 `async` 等同于 `async: true`。
+- `pi-subagents` 默认**MUST**使用后台模式；调用时省略 `async` 等同于 `async: true`。
 - 用户明确要求“前台执行”“等待完成”“拿到结果后再继续”时，必须在 `subagent` 调用中显式传 `async: false`。
 - 用户明确要求“后台执行”“不要阻塞”“把控制权交还给用户”时，必须显式传 `async: true`；启动后结束当前回合，不调用 `subagent_wait` 等待它。
 - 只有当前回合确实依赖后台任务结果时，才使用 `subagent_wait({ id: "..." })`；不要用 `subagent_wait({ all: true })` 等待无关的后台任务。
