@@ -15,6 +15,10 @@
 - 用户明确要求“前台执行”“等待完成”“拿到结果后再继续”时，必须在 `subagent` 调用中显式传 `async: false`。
 - 用户明确要求“后台执行”“不要阻塞”“把控制权交还给用户”时，必须显式传 `async: true`；启动后结束当前回合，不调用 `subagent_wait` 等待它。
 - 只有当前回合确实依赖后台任务结果时，才使用 `subagent_wait({ id: "..." })`；不要用 `subagent_wait({ all: true })` 等待无关的后台任务。
+- `workflowScript` 是普通 JavaScript 源码。禁止使用 `task: \`...\`` 承载任务文本，因为任务中的 Markdown 反引号和 `${...}` 会破坏脚本解析。
+- 单子代理必须优先使用结构化 `{ agent, task }`，不要为单个 child 使用 `workflowScript`。
+- 多子代理的任务文本必须使用数组 `.join("\n")`、普通引号字符串或 `JSON.stringify` 生成；不得把原始长文本放入 template literal。
+- 执行复杂 workflow 前，先使用 `{ action: "validate", workflowScript: "..." }`；验证失败时必须重新生成脚本，不得直接重试原脚本。
 
 ## Design discipline
 

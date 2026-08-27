@@ -1,0 +1,10 @@
+{
+  "models": {
+    "openai-codex/*":   "socks5h://127.0.0.1:7890",
+    "openai/*":         "socks5h://127.0.0.1:7890",
+    "opencode-go/gpt-*": "socks5h://127.0.0.1:7890"
+  },
+  "auth": {
+    "openai-codex": "socks5h://127.0.0.1:7890"
+  }
+}

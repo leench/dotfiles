@@ -9,6 +9,7 @@ PI_EXT_DIR="$PI_AGENT_DIR/extensions"
 GLOBAL_AGENTS_DIR="$HOME_DIR/.agents"
 GLOBAL_SKILLS_DIR="$GLOBAL_AGENTS_DIR/skills"
 SETTINGS_FILE="$PI_AGENT_DIR/settings.json"
+PROXY_ROUTER_FILE="$PI_AGENT_DIR/proxy-router.json"
 SUBAGENTS_FILE="$PI_AGENT_DIR/subagents.json"
 HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
 HOST_DEFAULTS_DIR="${PI_HOST_DEFAULTS_DIR:-$PI_AGENT_DIR/host-defaults}"
@@ -165,6 +166,7 @@ preflight_extensions() {
 
 preflight_static_layout() {
     preflight_file "$PI_DIR/AGENTS.md" "$PI_AGENT_DIR/AGENTS.md" "agent-AGENTS.md"
+    preflight_file "$PI_DIR/proxy-router.json" "$PROXY_ROUTER_FILE" "proxy-router.json"
     preflight_file "$PI_DIR/subagents.json" "$SUBAGENTS_FILE" "subagents.json"
     preflight_dir_contents "$PI_DIR/agents" "$PI_AGENT_DIR/agents" "agents"
     preflight_dir_contents "$PI_DIR/prompts" "$PI_AGENT_DIR/prompts" "prompts"
@@ -272,6 +274,7 @@ ensure_static_layout() {
     fi
 
     ensure_file_link "$PI_DIR/AGENTS.md" "$PI_AGENT_DIR/AGENTS.md" "agent-AGENTS.md"
+    ensure_file_link "$PI_DIR/proxy-router.json" "$PROXY_ROUTER_FILE" "proxy-router.json"
     ensure_file_link "$PI_DIR/subagents.json" "$SUBAGENTS_FILE" "subagents.json"
     ensure_dir_link "$PI_DIR/agents" "$PI_AGENT_DIR/agents" "agent-agents"
     ensure_dir_link "$PI_DIR/prompts" "$PI_AGENT_DIR/prompts" "agent-prompts"

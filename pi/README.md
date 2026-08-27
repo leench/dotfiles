@@ -5,8 +5,11 @@ mapping. Stable agents, prompts, skills, extension sources and subagent settings
 are linked into Pi's user directories. The main
 `settings.json` remains local, but every field explicitly present in
 `defaults/common.json` is synchronized into it during `sync.sh --update`.
-Credentials, sessions and other runtime state remain local. Packages and
-extensions present only on the local machine are preserved. Extension
+The proxy rules are kept separately in `proxy-router.json` and linked to
+`~/.pi/agent/proxy-router.json`, so they can be versioned without mixing them
+with Pi's runtime settings. Credentials, sessions and other runtime state
+remain local. Packages and extensions present only on the local machine are
+preserved. Extension
 `node_modules` stay under `~/.pi/agent/extensions` and receive an ignored
 source-side bridge symlink so Node can resolve dependencies through the
 linked source path.
@@ -19,6 +22,7 @@ repository with `--recurse-submodules`, or run `git submodule update --init
 --recursive` before `sync.sh`.
 
 - `packages.txt`: pinned third-party Pi packages
+- `proxy-router.json`: versioned model/auth proxy rules, linked independently
 - `agents/`: synchronized custom subagent definitions
 - `extensions/subagent/config.json`: synchronized pi-subagents runtime config
 - `defaults/common.json`: explicitly synchronized common settings fields, including builtin-agent policy
