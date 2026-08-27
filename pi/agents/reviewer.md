@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: 代码审查专家，专注正确性、安全性、回归风险和不必要复杂度
-model: zhipu/glm-5.3
+model: opencode-go/glm-5.3
 tools: read, grep, find, ls, bash
 thinking: high
 systemPromptMode: replace
