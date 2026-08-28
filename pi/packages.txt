@@ -1,9 +1,9 @@
-# Pi packages managed by dotfiles. Keep versions pinned.
-npm:@cortexkit/pi-magic-context@0.36.1
-npm:pi-web-access@0.23.0
-npm:@gotgenes/pi-permission-system@25.2.2
-npm:pi-atelier@0.8.1
-npm:pi-zentui@0.20.1
-npm:pi-btw@0.4.1
-npm:@ogulcancelik/pi-herdr@0.4.0
-npm:pi-subagents@0.51.0
+# Pi packages managed by dotfiles. Keep npm package versions unpinned.
+npm:@cortexkit/pi-magic-context
+npm:pi-web-access
+npm:@gotgenes/pi-permission-system
+npm:pi-atelier
+npm:pi-zentui
+npm:pi-btw
+npm:@ogulcancelik/pi-herdr
+npm:pi-subagents

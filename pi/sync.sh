@@ -303,9 +303,30 @@ ensure_static_layout() {
     copy_if_missing "$PI_DIR/skill-lock.json" "$GLOBAL_AGENTS_DIR/.skill-lock.json"
 }
 
+# Dotfiles 统一管理未固定版本的 npm package；即使 packages.txt 误留旧版本，
+# 也不要让它再次写入 settings.json。Git source 的 @ref 不在此处处理。
+normalize_package_spec() {
+    local spec="$1"
+    case "$spec" in
+        npm:@*/*@*)
+            printf '%s\n' "${spec%@*}"
+            ;;
+        npm:@*/*)
+            printf '%s\n' "$spec"
+            ;;
+        npm:*@*)
+            printf '%s\n' "${spec%@*}"
+            ;;
+        *)
+            printf '%s\n' "$spec"
+            ;;
+    esac
+}
+
 load_package_specs() {
     PACKAGE_SPECS=()
     while IFS= read -r spec; do
+        spec="$(normalize_package_spec "$spec")"
         PACKAGE_SPECS[${#PACKAGE_SPECS[@]}]="$spec"
     done < <(awk '
         /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
