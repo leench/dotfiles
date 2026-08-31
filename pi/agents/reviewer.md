@@ -1,9 +1,9 @@
 ---
 name: reviewer
 description: 代码审查专家，专注正确性、安全性、回归风险和不必要复杂度
-model: opencode-go/glm-5.3
+model: openai-codex/gpt-5.6-sol
 tools: read, grep, find, ls, bash
-thinking: high
+thinking: medium
 systemPromptMode: replace
 skills: find-docs
 ---
