@@ -10,6 +10,11 @@ import { existsSync, statSync } from "node:fs";
 const SSH_REMOTE_STATE_TYPE = "pi-ssh-remote-state";
 const SSH_LOCAL_STATE_TYPE = "pi-ssh-local-state";
 
+// Public event/message identifiers from pi-ssh-remote. Keep these as strings
+// so the local bridge does not import or patch the third-party extension.
+const SSH_ENVIRONMENT_EVENT = "ssh-remote:environment";
+const SSH_ENVIRONMENT_CONTEXT_TYPE = "ssh-remote-environment";
+
 interface RemoteSessionState {
   target: string;
   remoteCwd: string;
@@ -23,6 +28,19 @@ function asRecord(value: unknown): RecordLike | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as RecordLike
     : undefined;
+}
+
+function isSshEnvironmentContextMessage(value: unknown): boolean {
+  const message = asRecord(value);
+  return message?.role === "custom"
+    && message.customType === SSH_ENVIRONMENT_CONTEXT_TYPE;
+}
+
+function sshContextMessageKey(value: unknown): string {
+  const message = asRecord(value);
+  if (!message) return "";
+  if (typeof message.content === "string") return message.content;
+  return JSON.stringify(message.content) ?? "";
 }
 
 function findRemoteSessionState(ctx: ExtensionContext): RemoteSessionState | undefined {
@@ -76,6 +94,47 @@ function blockReason(remote: RemoteSessionState, detail: string): string {
 }
 
 export default function (pi: ExtensionAPI): void {
+  let lastForwardedSshContextKey: string | undefined;
+  const resetSshContextDeduplication = (): void => {
+    lastForwardedSshContextKey = undefined;
+  };
+
+  // pi-ssh-remote emits this when the active SSH environment is connected,
+  // exited, or its remote cwd changes. The next context message must be shown
+  // to the model even if its text happens to match the previous environment.
+  pi.events.on(SSH_ENVIRONMENT_EVENT, resetSshContextDeduplication);
+  pi.on("session_start", resetSshContextDeduplication);
+
+  // pi-ssh-remote injects this hidden custom message before every provider
+  // request. Keep it on the first request and when its semantic content or SSH
+  // state changes; suppress identical repeats that make the model acknowledge
+  // the same remote workspace over and over.
+  pi.on("context", (event) => {
+    const sshContextMessage = [...event.messages]
+      .reverse()
+      .find(isSshEnvironmentContextMessage);
+    const messagesWithoutSshContext = event.messages.filter(
+      (message) => !isSshEnvironmentContextMessage(message),
+    );
+
+    if (!sshContextMessage) {
+      resetSshContextDeduplication();
+      return messagesWithoutSshContext.length === event.messages.length
+        ? undefined
+        : { messages: messagesWithoutSshContext };
+    }
+
+    const contextKey = sshContextMessageKey(sshContextMessage);
+    if (contextKey === lastForwardedSshContextKey) {
+      return { messages: messagesWithoutSshContext };
+    }
+
+    lastForwardedSshContextKey = contextKey;
+    return {
+      messages: [...messagesWithoutSshContext, sshContextMessage],
+    };
+  });
+
   pi.on("tool_call", (event, ctx) => {
     if (event.toolName !== "subagent") return;
 

@@ -2,7 +2,6 @@
 npm:@cortexkit/pi-magic-context
 npm:pi-web-access
 npm:@gotgenes/pi-permission-system
-npm:pi-atelier
 npm:pi-zentui
 npm:pi-btw
 npm:@ogulcancelik/pi-herdr
