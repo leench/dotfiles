@@ -1,7 +1,7 @@
 ---
 name: worker
 description: 通用执行 agent，拥有全部工具能力，在隔离上下文中运行
-model: opencode-go/deepseek-v4-flash
+model: zai-api/glm-5.3-flash
 thinking: high
 systemPromptMode: replace
 defaultContext: fork

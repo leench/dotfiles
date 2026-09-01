@@ -173,17 +173,10 @@ export default function (pi: ExtensionAPI): void {
       };
     }
 
-    // A fresh child cannot inherit pi-ssh-remote's session state. Refuse it
-    // rather than allowing a silent fallback to the local workspace.
-    if (input.context === "fresh") {
-      return {
-        block: true,
-        reason: blockReason(
-          remote,
-          "context=\"fresh\" cannot inherit the SSH environment; use context=\"fork\".",
-        ),
-      };
-    }
+    // A fresh child cannot inherit pi-ssh-remote's session state. Normalize
+    // the model's explicit fresh preference instead of spending a turn on a
+    // preventable failed launch; this keeps the child in the remote workspace.
+    if (input.context === "fresh") input.context = "fork";
 
     // `profile` may resolve to a fresh context depending on the selected
     // agent. An SSH child must be forked so the persisted remote state follows

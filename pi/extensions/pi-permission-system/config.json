@@ -147,6 +147,10 @@
       "git config --get*": "allow",
       "git config --list*": "allow",
       "*>*": "ask",
+      "*manage.py test *": {
+        "action": "deny",
+        "reason": "禁止执行 Django 测试命令（manage.py test）。"
+      },
       "* makemigrations *": {
         "action": "deny",
         "reason": "禁止执行 Django makemigrations。"
