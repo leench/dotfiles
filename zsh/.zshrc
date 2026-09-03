@@ -102,7 +102,9 @@ fi
 # ===============================================================
 # 2. 基础环境变量与路径设置
 # ===============================================================
-export PATH="$HOME/.local/bin:$PATH"
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+    export PATH="$HOME/.local/bin:$PATH"
+fi
 
 # 禁止 fff 在 cwd 为 home 目录时扫描整个 home，避免额外的索引开销
 export FFF_ENABLE_HOME_SCAN=0
