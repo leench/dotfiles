@@ -13,12 +13,17 @@ _update_dotfiles() {
     local today=$(date +%Y-%m-%d)
     local dotfiles_dir="$HOME/dotfiles"
 
-    # 检查缓存：如果今天已经检查过且成功了，则跳过 (除非传入了 --force)
-    if [[ "$1" != "--force" ]]; then
-        [[ -f "$cache_file" && "$(cat "$cache_file")" == "$today" ]] && return
-    fi
-
     [[ ! -d "$dotfiles_dir/.git" ]] && return
+
+    # 检查缓存：如果今天已经检查过且成功了，则跳过 (除非传入了 --force)。
+    # submodule 未对齐时，即使主仓库当天已检查过，也要继续同步。
+    if [[ "$1" != "--force" ]]; then
+        if [[ -f "$cache_file" && "$(cat "$cache_file")" == "$today" ]]; then
+            if ! git -C "$dotfiles_dir" submodule status --recursive 2>/dev/null | grep -qE '^[+-U]'; then
+                return
+            fi
+        fi
+    fi
 
     # 脏检查：如果有未提交的改动，进行提醒
     if [[ -n $(git -C "$dotfiles_dir" status --porcelain) ]]; then
@@ -52,37 +57,54 @@ _update_dotfiles() {
     fi
 
     local remote_updates=$(git -C "$dotfiles_dir" rev-list HEAD..origin/main 2>/dev/null)
+    local submodule_needs_update=0
+    if git -C "$dotfiles_dir" submodule status --recursive 2>/dev/null | grep -qE '^[+-U]'; then
+        submodule_needs_update=1
+    fi
+
     if [[ -n "$remote_updates" ]]; then
         echo -e "\n\033[0;32m[UPDATE] 发现 dotfiles 远程更新！\033[0m"
         echo "------------------------------------------------"
         git -C "$dotfiles_dir" --no-pager log HEAD..origin/main --oneline --graph --decorate
         echo "------------------------------------------------"
-        
+
         echo -n "是否现在拉取更新? [Y/n] "
         read -r choice
         if [[ -z "$choice" || "$choice" == [yY]* ]]; then
             echo -e "正在更新 (git pull --rebase --autostash)..."
-            if git -C "$dotfiles_dir" pull --rebase --autostash origin main; then
-                local pi_sync="$dotfiles_dir/pi/sync.sh"
-                if [[ -x "$pi_sync" ]] && "$pi_sync" --update; then
-                    echo -e "\033[0;32m[OK] 更新与 Pi 同步成功！\033[0m"
-                    echo "$today" > "$cache_file"
-                elif [[ -x "$pi_sync" ]]; then
-                    echo -e "\n\033[0;31m[ERROR] dotfiles 已拉取，但 Pi 同步失败；本次不会标记为完成。\033[0m"
-                else
-                    echo -e "\033[0;32m[OK] 更新成功！\033[0m"
-                    echo "$today" > "$cache_file"
-                fi
-            else
+            if ! git -C "$dotfiles_dir" pull --rebase --autostash origin main; then
                 echo -e "\n\033[0;31m[ERROR] 更新失败，请尝试手动解决冲突。\033[0m"
+                return
             fi
         else
             echo -e "\n\033[0;34m已跳过更新，今日不再提醒。\033[0m"
             echo "$today" > "$cache_file"
+            return
         fi
     else
-        # 成功检查且没有更新
-        echo -e "\033[0;32m[OK] dotfiles 已是最新。\033[0m"
+        echo -e "\033[0;32m[OK] dotfiles 主仓库已是最新。\033[0m"
+    fi
+
+    echo "正在同步 dotfiles submodule..."
+    if ! git -C "$dotfiles_dir" submodule update --init --recursive; then
+        echo -e "\n\033[0;31m[ERROR] submodule 同步失败；本次不会标记为完成。\033[0m"
+        return
+    fi
+    echo -e "\033[0;32m[OK] submodule 已同步。\033[0m"
+
+    if [[ -n "$remote_updates" || "$submodule_needs_update" -eq 1 ]]; then
+        local pi_sync="$dotfiles_dir/pi/sync.sh"
+        if [[ -x "$pi_sync" ]] && "$pi_sync" --update; then
+            echo -e "\033[0;32m[OK] 更新、submodule 与 Pi 同步成功！\033[0m"
+            echo "$today" > "$cache_file"
+        elif [[ -x "$pi_sync" ]]; then
+            echo -e "\n\033[0;31m[ERROR] dotfiles/submodule 已同步，但 Pi 同步失败；本次不会标记为完成。\033[0m"
+        else
+            echo -e "\033[0;32m[OK] 更新与 submodule 同步成功！\033[0m"
+            echo "$today" > "$cache_file"
+        fi
+    else
+        echo -e "\033[0;32m[OK] dotfiles 与 submodule 已是最新。\033[0m"
         echo "$today" > "$cache_file"
     fi
 }

@@ -450,6 +450,14 @@ window-rule {
     // block-out-from "screencast"
 }
 
+// ZMK Runtime Macro: utility window defaults.
+window-rule {
+    match app-id=r#"^zmk-runtime-macro-desktop$"#
+    open-floating true
+    default-column-width { fixed 1344; }
+    default-window-height { fixed 896; }
+}
+
 // Example: enable rounded corners for all windows.
 // (This example rule is commented out with a "/-" in front.)
 window-rule {
@@ -767,3 +775,4 @@ include "dms/windowrules.kdl"
 
 include "theme.kdl"
 include "dms/binds.kdl"
+include "dms/layout.kdl"
