@@ -640,10 +640,6 @@ function runDetailLines(
 		];
 		if (observed.length > 1 && candidate.index >= 0)
 			parts.push(`step ${candidate.index + 1}/${observed.length}`);
-		const model = asString(step?.model) ?? (isCurrent ? run.model ?? asString(data?.model) : undefined);
-		const thinking = asString(step?.thinking) ?? (isCurrent ? asString(data?.thinking) : undefined);
-		if (model) parts.push(`model ${preview(model, 42)}${thinking ? ` ${thinking}` : ""}`);
-		else if (thinking) parts.push(thinking);
 		if (activityState && activityState !== state) parts.push(activityState);
 		if (mode && observed.length <= 1) parts.push(mode);
 		const toolCount = asFiniteNumber(step?.toolCount ?? (isCurrent ? data?.toolCount : undefined));
@@ -658,6 +654,9 @@ function runDetailLines(
 				: undefined) ??
 			readSessionUsage(run, sessionFile, startedAt);
 		if (usage) parts.push(formatTokenUsage(usage));
+		const elapsedMs = now - startedAt;
+		if (usage && usage.output > 0 && elapsedMs >= 1_000)
+			parts.push(`${Math.round(usage.output / (elapsedMs / 1000))} tok/s`);
 		lines.push({
 			kind: "status",
 			prefix,
