@@ -33,9 +33,59 @@ interface RemoteState {
 	anchor: string;
 }
 
-// Process-level state only. Never persisted into the session branch: background
-// subagent runner processes inherit the env vars and this module, which is what
-// makes them follow the remote workspace automatically.
+interface WorkspaceSessionState {
+	version: 1;
+	connected: boolean;
+	alias?: string;
+	sessionNameManaged?: boolean;
+	sessionNameBefore?: string | null;
+}
+
+const SESSION_STATE_TYPE = "pi-ssh-workspace";
+
+function isWorkspaceSessionState(value: unknown): value is WorkspaceSessionState {
+	if (typeof value !== "object" || value === null) return false;
+	const state = value as Record<string, unknown>;
+	if (state.version !== 1 || typeof state.connected !== "boolean") return false;
+	if (state.connected && typeof state.alias !== "string") return false;
+	if (state.sessionNameManaged !== undefined && typeof state.sessionNameManaged !== "boolean") return false;
+	if (
+		state.sessionNameBefore !== undefined &&
+		state.sessionNameBefore !== null &&
+		typeof state.sessionNameBefore !== "string"
+	) {
+		return false;
+	}
+	return true;
+}
+
+function readWorkspaceSessionState(ctx: ExtensionContext): WorkspaceSessionState | undefined {
+	const branch = ctx.sessionManager.getBranch();
+	for (let index = branch.length - 1; index >= 0; index -= 1) {
+		const entry = branch[index];
+		if (entry.type !== "custom" || entry.customType !== SESSION_STATE_TYPE) continue;
+		if (isWorkspaceSessionState(entry.data)) return entry.data;
+	}
+	return undefined;
+}
+
+function legacyAliasForSessionName(sessionName: string | undefined): string | undefined {
+	if (!sessionName) return undefined;
+	try {
+		const config = loadConfig();
+		for (const [alias, entry] of Object.entries(config.aliases)) {
+			if (entry.path === undefined) continue;
+			const displayName = `${entry.host}${entry.port === undefined ? "" : `:${entry.port}`}:${entry.path}`;
+			if (displayName === sessionName) return alias;
+		}
+	} catch {
+		// A normal local session must not fail just because the optional config is absent or invalid.
+	}
+	return undefined;
+}
+
+// Process-level state is still used by background subagent runner processes.
+// The active session binding itself is persisted separately in the session branch.
 const transport = new SshTransport();
 let remote: RemoteState | undefined;
 
@@ -270,32 +320,34 @@ export default function (pi: ExtensionAPI): void {
 	// Resolve target from env first (background subagent processes), then the CLI flag.
 	pi.registerFlag("ssh", { description: "SSH workspace alias from ~/.pi/agent/ssh-workspace.json", type: "string" });
 
-	const connect = async (alias: string, ctx: ExtensionContext): Promise<void> => {
-		const previous = remote;
-		const next = await connectTarget(alias, anchor); // throws without mutating state on failure
-		blocked = undefined;
-		remote = next;
-		applyEnv(next);
-		updateStatus(ctx, next);
-		applySessionName(ctx, next);
-		activateLocalTools(ctx);
-		ctx.ui.notify(`已进入 SSH workspace ${next.target.alias}:${next.target.remoteRoot}${previous ? `（原 ${previous.target.alias}）` : ""}`, "info");
-	};
-
 	// The remote target is surfaced as the session name, which pi's TUI renders in
 	// the editor header (zentui's minimalist editor puts it in bold green next to
 	// the elapsed timer). A name the user set with /name is never overwritten, and
 	// a name this extension set is restored on exit.
 	let sessionNameApplied: string | undefined;
 	let sessionNameBefore: string | undefined;
-	function applySessionName(ctx: ExtensionContext, next: RemoteState | undefined): void {
+	function applySessionName(
+		ctx: ExtensionContext,
+		next: RemoteState | undefined,
+		restored?: WorkspaceSessionState,
+	): void {
 		if (!ctx.hasUI) return; // background subagent processes have no visible session name
 		const current = pi.getSessionName();
 		if (next) {
 			const name = remoteDisplayName(next);
-			if (name === current) return;
+			if (name === current) {
+				// On resume the session name is already loaded from session_info. Rebuild
+				// the in-memory markers so /ssh exit can restore the user's old name.
+				if (sessionNameApplied === undefined && restored?.sessionNameManaged) {
+					sessionNameApplied = name;
+					sessionNameBefore = restored.sessionNameBefore ?? undefined;
+				}
+				return;
+			}
 			if (current && current !== sessionNameApplied) return; // user-named session stays untouched
-			if (sessionNameApplied === undefined) sessionNameBefore = current;
+			if (sessionNameApplied === undefined) {
+				sessionNameBefore = restored?.sessionNameManaged ? restored.sessionNameBefore ?? undefined : current;
+			}
 			sessionNameApplied = name;
 			pi.setSessionName(name);
 			return;
@@ -307,31 +359,65 @@ export default function (pi: ExtensionAPI): void {
 		sessionNameBefore = undefined;
 	}
 
-	const disconnect = (ctx: ExtensionContext, notify: boolean): void => {
-		if (!remote) {
-			applyEnv(undefined);
-			updateStatus(ctx, undefined);
-			applySessionName(ctx, undefined);
-			return;
+	const persistWorkspaceState = (state: WorkspaceSessionState): void => {
+		pi.appendEntry(SESSION_STATE_TYPE, state);
+	};
+	const currentWorkspaceState = (alias: string): WorkspaceSessionState => ({
+		version: 1,
+		connected: true,
+		alias,
+		sessionNameManaged: sessionNameApplied !== undefined,
+		sessionNameBefore: sessionNameApplied === undefined ? undefined : sessionNameBefore ?? null,
+	});
+
+	const connect = async (
+		alias: string,
+		ctx: ExtensionContext,
+		options: {
+			persist?: boolean;
+			notify?: boolean;
+			restored?: WorkspaceSessionState;
+		} = {},
+	): Promise<void> => {
+		const previous = remote;
+		const next = await connectTarget(alias, anchor); // throws without mutating state on failure
+		blocked = undefined;
+		remote = next;
+		applyEnv(next);
+		updateStatus(ctx, next);
+		applySessionName(ctx, next, options.restored);
+		activateLocalTools(ctx);
+		if (options.persist) persistWorkspaceState(currentWorkspaceState(next.target.alias));
+		if (options.notify !== false && ctx.hasUI) {
+			ctx.ui.notify(`已进入 SSH workspace ${next.target.alias}:${next.target.remoteRoot}${previous ? `（原 ${previous.target.alias}）` : ""}`, "info");
 		}
-		const alias = remote.target.alias;
+	};
+
+	const disconnect = (ctx: ExtensionContext, notify: boolean, persist = true): void => {
+		const alias = remote?.target.alias;
 		blocked = undefined;
 		remote = undefined;
 		applyEnv(undefined);
 		updateStatus(ctx, undefined);
 		applySessionName(ctx, undefined);
 		deactivateLocalTools(ctx);
-		if (notify) ctx.ui.notify(`已退出 SSH workspace ${alias}，回到本地`, "info");
+		if (persist) persistWorkspaceState({ version: 1, connected: false });
+		if (notify && ctx.hasUI) ctx.ui.notify(`已退出 SSH workspace${alias ? ` ${alias}` : ""}，回到本地`, "info");
 	};
 
 	pi.on("session_start", async (_event, ctx) => {
-		// Env-derived state wins and is never cleared here: background subagent
-		// processes get a session_start with no --ssh flag but a valid env target.
+		// Env-derived state wins for background subagent processes. Interactive
+		// session state is restored from the current session branch instead.
 		const envAlias = process.env[ENV_ALIAS];
 		const flagAlias = pi.getFlag("ssh") as string | undefined;
+		const savedState = readWorkspaceSessionState(ctx);
+		const savedAlias = savedState?.connected ? savedState.alias : undefined;
+		// Sessions created before state persistence may still carry the remote target
+		// in their display name. Migrate that unambiguous legacy form once.
+		const legacyAlias = !envAlias && !flagAlias && !savedState ? legacyAliasForSessionName(pi.getSessionName()) : undefined;
 		try {
 			if (envAlias) {
-				if (!remote) {
+				if (!remote || remote.target.alias !== envAlias) {
 					const next = await connectTarget(envAlias, localAnchor());
 					remote = next;
 					blocked = undefined;
@@ -342,23 +428,58 @@ export default function (pi: ExtensionAPI): void {
 				return;
 			}
 			if (flagAlias) {
-				await connect(flagAlias, ctx);
+				await connect(flagAlias, ctx, {
+					persist: true,
+					restored: savedState?.alias === flagAlias ? savedState : undefined,
+				});
+				return;
+			}
+			if (savedAlias || legacyAlias) {
+				const alias = savedAlias ?? legacyAlias;
+				const restored =
+					savedState ??
+					({
+						version: 1,
+						connected: true,
+						alias,
+						sessionNameManaged: true,
+						sessionNameBefore: null,
+					} satisfies WorkspaceSessionState);
+				await connect(alias, ctx, { persist: true, notify: false, restored });
 				return;
 			}
 		} catch (error) {
 			// Never fall back to local: a background subagent that thinks it is
 			// remote must not silently edit local files. Block all tools instead.
 			const reason = (error as Error).message;
-			blocked = { alias: envAlias ?? flagAlias ?? "", reason };
+			const failedAlias = envAlias ?? flagAlias ?? savedAlias ?? legacyAlias ?? "";
+			blocked = { alias: failedAlias, reason };
 			if (ctx?.hasUI) {
 				ctx.ui.setStatus("ssh-workspace", ctx.ui.theme.fg("error", `● SSH ${blocked.alias} 连接失败`));
 				ctx.ui.notify(`SSH workspace ${blocked.alias} 连接失败：${reason}。工具不会回退到本地；用 /ssh ${blocked.alias} 重试或 /ssh exit。`, "warning");
 			}
 			return;
 		}
+		remote = undefined;
+		blocked = undefined;
 		applyEnv(undefined);
 		updateStatus(ctx, undefined);
 		applySessionName(ctx, undefined);
+		deactivateLocalTools(ctx);
+	});
+
+	// Session replacement tears down the old extension runtime before binding the
+	// new session. Do not append a disconnected state or clear the persisted title:
+	// the old session must resume as remote later, while the new session restores
+	// its own state from its branch.
+	pi.on("session_shutdown", (_event, ctx) => {
+		remote = undefined;
+		blocked = undefined;
+		applyEnv(undefined);
+		updateStatus(ctx, undefined);
+		deactivateLocalTools(ctx);
+		sessionNameApplied = undefined;
+		sessionNameBefore = undefined;
 	});
 
 	// ---- tool overrides: all 8 builtin names, always registered. ----
@@ -595,7 +716,7 @@ export default function (pi: ExtensionAPI): void {
 				const picked = await ctx.ui.select("选择 SSH workspace", labels);
 				if (!picked) return;
 				const alias = picked.slice(0, picked.indexOf("—")).trim();
-				await connect(alias, ctx);
+				await connect(alias, ctx, { persist: true });
 				return;
 			}
 			if (arg === "exit" || arg === "forget") {
@@ -619,7 +740,7 @@ export default function (pi: ExtensionAPI): void {
 				ctx.ui.notify("配置已重读", "info");
 				return;
 			}
-			await connect(arg, ctx);
+			await connect(arg, ctx, { persist: true });
 		},
 	});
 }

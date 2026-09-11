@@ -49,6 +49,7 @@ ln -s /Users/leen/dotfiles/pi/extensions/pi-ssh-workspace/index.ts ~/.pi/agent/e
 - 系统提示的 `Current working directory` 行被改写为远端路径，模型始终知道自己在远端；正则未匹配时在末尾追加说明兜底。扩展不会注入任何会话消息。
 - 状态栏常驻 **绿色** `SSH: connected`；进入/切换/退出都有 notify 提醒；切换失败保持原状态。
 - 远端目标写进**会话名**（`host:/remote/root`，如 `aliyun:/webprojects/gzstv/GZSTVSite`），pi / zentui 会把它显示在输入框顶部那一行（zentui 的 minimalist editor 里就是计时器旁边那串绿字）。用户用 `/name` 自己命名的会话不会被覆盖，退出时恢复。
+- 进入远端时会把 alias 和会话名称接管状态写入当前 session 的 custom entry；resume / reload 时按当前 session branch 恢复远端 workspace，不会把上一个 session 的远程状态或标题带到本地 session。旧版本只保存了远程会话名的 session 会按已配置的完整目标名自动迁移。
   - zentui 会重新给扩展状态上色，所以 `~/.pi/agent/zentui.json` 里已设 `components.footer.styles.starship.extensionStatuses.colorModes["ssh-workspace"] = "original"` 保留扩展自带的绿色；位置用同层 `placements["ssh-workspace"]`（`left`/`middle`/`right`/`off`）调整，默认 `right`。
 - 连接复用：ControlMaster/ControlPersist（10 分钟），避免每次工具调用重新握手。
 - 写文件：原始字节走 stdin 管道（`cat > <path>`），不 base64、不经命令行参数；shell 参数单引号转义。
@@ -59,7 +60,7 @@ ln -s /Users/leen/dotfiles/pi/extensions/pi-ssh-workspace/index.ts ~/.pi/agent/e
 - **后台子代理（async: true，默认）自动跟随远端**：runner 进程继承 `PI_SSH_WORKSPACE` / `PI_SSH_LOCAL_ANCHOR` 环境变量并加载本扩展。
 - 前台子代理（`async: false`）在远端模式下被拦截并提示改用后台——机制上前台子代理不加载环境扩展，会在本地文件系统运行。
 - `worktree: true` / `isolation: "worktree"` 在远端模式下被拦截（worktree 是本地 git 操作）。
-- 状态是进程级的：不写 session 分支、不注入消息，避免旧扩展与子代理的冲突问题。
+- 运行时路由状态仍是进程级的，供当前进程及后台子代理继承；当前 session 的绑定只写入 custom entry，不注入 LLM 消息，避免不同 session 之间串状态。
 - **连接失败的封锁语义**：启动时（`--ssh` 或环境变量派生）连接失败会进入封锁状态——所有工具调用直接报错，绝不静默回退到本地文件系统（后台子代理尤其危险）。页脚显示 `● SSH <alias> 连接失败`，修复后 `/ssh <alias>` 重试或 `/ssh exit` 清除。
 
 ## 本地访问工具（local_bash / local_read）
