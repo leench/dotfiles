@@ -1,7 +1,4 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 /**
  * Minimal SSH transport built on the system `ssh` client.
@@ -32,23 +29,13 @@ interface ExecResult {
 }
 
 export class SshTransport {
-	private controlDir: string | undefined;
-
 	/**
-	 * Long-lived master connection so each tool call does not pay a fresh handshake.
-	 * Kept in the OS temp dir keyed by the alias to avoid path collisions.
+	 * Use the user's effective SSH config for ControlPath so an already
+	 * authenticated terminal connection can be reused by the extension.
 	 */
-	private controlPathFor(alias: string): string {
-		if (!this.controlDir) {
-			this.controlDir = mkdtempSync(join(tmpdir(), "pi-ssh-ws-"));
-		}
-		return join(this.controlDir, encodeURIComponent(alias));
-	}
-
 	private buildArgs(target: SshTarget, remoteCommand: string): string[] {
 		const args = [
 			"-o", "ControlMaster=auto",
-			"-o", `ControlPath=${this.controlPathFor(target.alias)}`,
 			"-o", "ControlPersist=10m",
 			"-o", "BatchMode=yes",
 			// Drop client warnings such as the post-quantum KEX notice; they are
