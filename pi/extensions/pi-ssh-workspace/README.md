@@ -46,7 +46,7 @@ ln -s /Users/leen/dotfiles/pi/extensions/pi-ssh-workspace/index.ts ~/.pi/agent/e
 - 进入远端后：7 个工具走远端；`powershell` 在远端（Unix）返回明确错误。
 - 路径映射：启动目录（anchor）映射到远端根目录；anchor 外的绝对路径原样透传（可直接读 `/etc/...`）。
 - `!` / `!!` 命令走远端。
-- 系统提示的 `Current working directory` 行被改写为远端路径，模型始终知道自己在远端；正则未匹配时在末尾追加说明兜底。扩展不会注入任何会话消息。
+- 系统提示的 `Current working directory` 行被改写为远端路径，模型始终知道自己在远端；正则未匹配时在末尾追加说明兜底。进入远端后保留全局 `~/.pi/agent/AGENTS.md`，移除本地项目上下文，改为加载远端根目录向上的 `AGENTS.override.md` / `AGENTS.md` / `AGENTS.MD` / `CLAUDE.md` / `CLAUDE.MD`；切换 workspace 会替换上下文，退出后恢复本地上下文。后台子代理同样执行这套处理。扩展不会注入任何会话消息。
 - 状态栏常驻 **绿色** `SSH: connected`；进入/切换/退出都有 notify 提醒；切换失败保持原状态。
 - 远端目标写进**会话名**（`host:/remote/root`，如 `aliyun:/webprojects/gzstv/GZSTVSite`），pi / zentui 会把它显示在输入框顶部那一行（zentui 的 minimalist editor 里就是计时器旁边那串绿字）。用户用 `/name` 自己命名的会话不会被覆盖，退出时恢复。
 - 进入远端时会把 alias 和会话名称接管状态写入当前 session 的 custom entry；resume / reload 时按当前 session branch 恢复远端 workspace，不会把上一个 session 的远程状态或标题带到本地 session。旧版本只保存了远程会话名的 session 会按已配置的完整目标名自动迁移。

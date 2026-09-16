@@ -1,4 +1,5 @@
 import { statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	createBashTool,
@@ -15,6 +16,7 @@ import {
 	createReadToolDefinition,
 	createWriteTool,
 	createWriteToolDefinition,
+	getAgentDir,
 	type BashOperations,
 	type EditOperations,
 	type FindOperations,
@@ -94,6 +96,107 @@ let remote: RemoteState | undefined;
 // filesystem — a background subagent that thinks it is remote must never edit
 // local files.
 let blocked: { alias: string; reason: string } | undefined;
+
+interface RemoteContextFile {
+	path: string;
+	content: string;
+}
+
+const REMOTE_CONTEXT_FILE_NAMES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"] as const;
+let remoteContextCache: { state: RemoteState; files: RemoteContextFile[] } | undefined;
+let remoteContextLoading: { state: RemoteState; promise: Promise<RemoteContextFile[]> } | undefined;
+
+function invalidateRemoteContextCache(): void {
+	remoteContextCache = undefined;
+	remoteContextLoading = undefined;
+}
+
+async function readRemoteContextFiles(state: RemoteState): Promise<RemoteContextFile[]> {
+	const names = REMOTE_CONTEXT_FILE_NAMES.map(shQuote).join(" ");
+	const result = await transport.exec(
+		state.target,
+		[
+			`dir=${shQuote(state.target.remoteRoot)}`,
+			"while :; do",
+			`  for name in ${names}; do`,
+			`    candidate=\"$dir/$name\"`,
+			`    if test -f \"$candidate\" && test -r \"$candidate\"; then`,
+			`      printf '%s\\n' \"$candidate\"`,
+			"      break",
+			"    fi",
+			"  done",
+			"  if test \"$dir\" = \"/\"; then break; fi",
+			"  dir=${dir%/*}",
+			"  if test -z \"$dir\"; then dir=/; fi",
+			"done",
+		].join("\n"),
+		state.target.remoteRoot,
+		{ timeoutMs: 15_000 },
+	);
+	if (result.exitCode !== 0) return [];
+
+	const paths = result.stdout
+		.split("\n")
+		.map((line) => (line.startsWith("//") ? line.slice(1) : line).trim())
+		.filter(Boolean)
+		.reverse();
+	const files: RemoteContextFile[] = [];
+	for (const path of paths) {
+		try {
+			const content = (await transport.readFile(state.target, path)).toString("utf-8").replace(/^\uFEFF/, "");
+			files.push({ path, content });
+		} catch {
+			// Match pi's best-effort context loading: an unreadable file does not
+			// prevent the other context files or the agent itself from starting.
+		}
+	}
+	return files;
+}
+
+async function getRemoteContextFiles(state: RemoteState): Promise<RemoteContextFile[]> {
+	if (remoteContextCache?.state === state) return remoteContextCache.files;
+	if (remoteContextLoading?.state === state) return remoteContextLoading.promise;
+
+	const promise = readRemoteContextFiles(state).catch(() => []);
+	remoteContextLoading = { state, promise };
+	const files = await promise;
+	if (remoteContextLoading?.state === state) {
+		remoteContextCache = { state, files };
+		remoteContextLoading = undefined;
+	}
+	return files;
+}
+
+function contextPromptEntries(files: RemoteContextFile[]): string {
+	return files
+		.map(({ path, content }) => `<project_instructions path="${path}">\n${content}\n</project_instructions>`)
+		.join("\n\n");
+}
+
+function replaceProjectContext(systemPrompt: string, files: RemoteContextFile[]): string {
+	if (files.length === 0) return systemPrompt.replace(/\n?<project_context>[\s\S]*?<\/project_context>\n?/m, "");
+
+	const section = [
+		"<project_context>",
+		"",
+		"Project-specific instructions and guidelines:",
+		"",
+		contextPromptEntries(files),
+		"",
+		"</project_context>",
+	].join("\n");
+	const contextPattern = /\n?<project_context>[\s\S]*?<\/project_context>\n?/m;
+	return contextPattern.test(systemPrompt)
+		? systemPrompt.replace(contextPattern, `\n${section}\n`)
+		: `${systemPrompt}\n\n${section}\n`;
+}
+
+function localGlobalContextFiles(event: { systemPromptOptions: { contextFiles?: Array<{ path: string; content: string }> } }): RemoteContextFile[] {
+	const agentDir = resolve(getAgentDir());
+	return (event.systemPromptOptions.contextFiles ?? [])
+		.filter((file) => resolve(dirname(file.path)) === agentDir)
+		.map((file) => ({ path: file.path, content: file.content }));
+}
 
 function localAnchor(): string {
 	return process.env[ENV_ANCHOR] || process.cwd();
@@ -383,6 +486,7 @@ export default function (pi: ExtensionAPI): void {
 		const next = await connectTarget(alias, anchor); // throws without mutating state on failure
 		blocked = undefined;
 		remote = next;
+		invalidateRemoteContextCache();
 		applyEnv(next);
 		updateStatus(ctx, next);
 		applySessionName(ctx, next, options.restored);
@@ -397,6 +501,7 @@ export default function (pi: ExtensionAPI): void {
 		const alias = remote?.target.alias;
 		blocked = undefined;
 		remote = undefined;
+		invalidateRemoteContextCache();
 		applyEnv(undefined);
 		updateStatus(ctx, undefined);
 		applySessionName(ctx, undefined);
@@ -420,6 +525,7 @@ export default function (pi: ExtensionAPI): void {
 				if (!remote || remote.target.alias !== envAlias) {
 					const next = await connectTarget(envAlias, localAnchor());
 					remote = next;
+					invalidateRemoteContextCache();
 					blocked = undefined;
 					updateStatus(ctx, next);
 				}
@@ -461,6 +567,7 @@ export default function (pi: ExtensionAPI): void {
 			return;
 		}
 		remote = undefined;
+		invalidateRemoteContextCache();
 		blocked = undefined;
 		applyEnv(undefined);
 		updateStatus(ctx, undefined);
@@ -474,6 +581,7 @@ export default function (pi: ExtensionAPI): void {
 	// its own state from its branch.
 	pi.on("session_shutdown", (_event, ctx) => {
 		remote = undefined;
+		invalidateRemoteContextCache();
 		blocked = undefined;
 		applyEnv(undefined);
 		updateStatus(ctx, undefined);
@@ -619,21 +727,28 @@ export default function (pi: ExtensionAPI): void {
 		};
 	});
 
-	// ---- system prompt: line-based rewrite with a guaranteed fallback ----
-	pi.on("before_agent_start", (event) => {
+	// ---- system prompt: replace local project context with remote context ----
+	pi.on("before_agent_start", async (event) => {
 		const s = remote;
-		if (!s) return; // local or blocked: tools throw on blocked, prompt stays as-is
+		if (!s) return; // local or blocked: keep pi's normal local context
+
+		const remoteFiles = await getRemoteContextFiles(s);
+		if (remote !== s) return; // do not inject stale rules after a workspace switch
+		const contextFiles = [...localGlobalContextFiles(event), ...remoteFiles];
+		let systemPrompt = replaceProjectContext(event.systemPrompt, contextFiles);
 		const remoteLine = [
 			`Current working directory: ${s.target.remoteRoot} (SSH: ${s.target.alias}) — 本地文件系统不可用，所有文件操作都在远端 workspace`,
 			`本地 anchor 目录（本机）: ${s.anchor}`,
 			`subagent 工具的 cwd 参数作用于本地机器：请传本地 anchor 路径（${s.anchor}）或省略；子代理内部的文件工具会自动跟随当前 SSH workspace。workflowScript 中不要给步骤设置 cwd。`,
 		].join("\n");
 		const linePattern = /^Current working directory: .*$/m;
-		if (linePattern.test(event.systemPrompt)) {
-			return { systemPrompt: event.systemPrompt.replace(linePattern, remoteLine) };
+		if (linePattern.test(systemPrompt)) {
+			systemPrompt = systemPrompt.replace(linePattern, remoteLine);
+		} else {
+			// Fallback: never leave the model unaware of the remote workspace.
+			systemPrompt += "\n\n" + remoteLine;
 		}
-		// Fallback: never leave the model unaware of the remote workspace.
-		return { systemPrompt: event.systemPrompt + "\n\n" + remoteLine };
+		return { systemPrompt };
 	});
 
 	// ---- subagent guard (remote mode only) ----
@@ -737,6 +852,7 @@ export default function (pi: ExtensionAPI): void {
 			}
 			if (arg === "reload") {
 				loadConfig(); // validates; errors propagate to the UI
+				invalidateRemoteContextCache();
 				ctx.ui.notify("配置已重读", "info");
 				return;
 			}
