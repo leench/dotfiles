@@ -41,8 +41,6 @@ if [[ "$MODE" == "--check" ]]; then
     CHECK_ONLY=1
 fi
 
-BACKUP_DIR="${PI_SYNC_BACKUP_ROOT:-$HOME_DIR/pi-backups}/pi-sync-$(date +%Y%m%d-%H%M%S)"
-BACKUP_READY=0
 CHECK_FAILURE=0
 
 log() {
@@ -56,33 +54,6 @@ warn() {
 fail() {
     printf '[pi-sync][ERROR] %s\n' "$*" >&2
     exit 1
-}
-
-prepare_backup() {
-    if [[ "$BACKUP_READY" -eq 0 ]]; then
-        mkdir -p "$BACKUP_DIR"
-        chmod 700 "$BACKUP_DIR"
-        BACKUP_READY=1
-        log "本次变更备份目录：$BACKUP_DIR"
-    fi
-}
-
-backup_copy() {
-    local target="$1"
-    local label="$2"
-    [[ -e "$target" || -L "$target" ]] || return 0
-    prepare_backup
-    mkdir -p "$BACKUP_DIR/$(dirname "$label")"
-    cp -a -- "$target" "$BACKUP_DIR/$label"
-}
-
-backup_move() {
-    local target="$1"
-    local label="$2"
-    [[ -e "$target" || -L "$target" ]] || return 0
-    prepare_backup
-    mkdir -p "$BACKUP_DIR/$(dirname "$label")"
-    mv -- "$target" "$BACKUP_DIR/$label"
 }
 
 check_problem() {
@@ -193,13 +164,13 @@ ensure_dir_link() {
             check_problem "symlink 指向错误：$target"
             return 0
         fi
-        backup_move "$target" "$label"
+        rm -rf -- "$target"
     elif [[ -e "$target" ]]; then
         if [[ "$CHECK_ONLY" -eq 1 ]]; then
             log "目录内容可迁移，待建立 symlink：$target"
             return 0
         fi
-        backup_move "$target" "$label"
+        rm -rf -- "$target"
     elif [[ "$CHECK_ONLY" -eq 1 ]]; then
         log "待建立目录 symlink：$target"
         return 0
@@ -227,13 +198,13 @@ ensure_file_link() {
             check_problem "文件 symlink 指向错误：$target"
             return 0
         fi
-        backup_move "$target" "$label"
+        rm -rf -- "$target"
     elif [[ -e "$target" ]]; then
         if [[ "$CHECK_ONLY" -eq 1 ]]; then
             log "文件内容可迁移，待建立 symlink：$target"
             return 0
         fi
-        backup_move "$target" "$label"
+        rm -rf -- "$target"
     elif [[ "$CHECK_ONLY" -eq 1 ]]; then
         log "待建立文件 symlink：$target"
         return 0
@@ -403,7 +374,6 @@ apply_defaults() {
     local host_file="$HOST_DEFAULTS"
     local tmp
     [[ -f "$host_file" ]] || host_file="/dev/null"
-    backup_copy "$SETTINGS_FILE" "agent/settings.json.before-apply-defaults"
     tmp="$(mktemp "$SETTINGS_FILE.tmp.XXXXXX")"
     jq --slurpfile common "$PI_DIR/defaults/common.json" \
        --slurpfile host "$host_file" \
@@ -429,7 +399,6 @@ apply_common_settings() {
         return 0
     fi
 
-    backup_copy "$SETTINGS_FILE" "agent/settings.json.before-common-sync"
     chmod 600 "$tmp"
     mv -- "$tmp" "$SETTINGS_FILE"
     log "已同步 common.json 中显式配置的字段"
@@ -473,7 +442,6 @@ reconcile_packages() {
     pi_bin="${PI_BIN:-$(command -v pi || true)}"
     [[ -n "$pi_bin" ]] || fail "找不到 pi 命令，无法 reconcile packages"
 
-    backup_copy "$SETTINGS_FILE" "agent/settings.json.before-package-sync"
     merge_managed_packages "$SETTINGS_FILE"
     log "已仅更新 settings.json 的 packages 字段"
     "$pi_bin" update --extensions
@@ -566,6 +534,3 @@ if [[ "$CHECK_ONLY" -eq 1 && "$CHECK_FAILURE" -ne 0 ]]; then
 fi
 
 log "同步完成"
-if [[ "$BACKUP_READY" -eq 1 ]]; then
-    log "本次局部备份保留于：$BACKUP_DIR"
-fi
