@@ -1,5 +1,5 @@
 ---
-description: [scout(opencode-go/deepseek-v4-flash) -> planner(opencode-go/glm-5.2) -> worker(opencode-go/deepseek-v4-pro)] 完整实现流程：侦察→规划→实施
+description: "[scout(opencode-go/deepseek-v4.1-flash) -> planner(opencode-go/glm-5.3) -> worker(opencode-go/deepseek-v4-pro)] 完整实现流程：侦察→规划→实施"
 ---
 使用 subagent 工具的 chain 参数执行此工作流：
 

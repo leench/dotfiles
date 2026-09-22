@@ -1,5 +1,5 @@
 ---
-description: [worker(opencode-go/deepseek-v4-pro) -> reviewer(opencode-go/deepseek-v4-pro) -> worker(opencode-go/deepseek-v4-pro)] 实现→审查→修复
+description: "[worker(opencode-go/deepseek-v4-pro) -> reviewer(opencode-go/deepseek-v4-pro) -> worker(opencode-go/deepseek-v4-pro)] 实现→审查→修复"
 ---
 使用 subagent 工具的 chain 参数执行此工作流：
 
