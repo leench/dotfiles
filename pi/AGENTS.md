@@ -20,6 +20,9 @@
 - 单子代理必须优先使用结构化 `{ agent, task }`，不要为单个 child 使用 `workflowScript`。
 - 多子代理的任务文本必须使用数组 `.join("\n")`、普通引号字符串或 `JSON.stringify` 生成；不得把原始长文本放入 template literal。
 - 执行复杂 workflow 前，先使用 `{ action: "validate", workflowScript: "..." }`；验证失败时必须重新生成脚本，不得直接重试原脚本。
+- 子代理完成后收到用户、主代理、测试或其他子代理的反馈时，若仍是同一目标、范围和实现方向，且原会话可恢复，优先使用 `resume` 继续原子代理；不要仅因角色名相同而新开会话。
+- 若反馈改变了需求、范围或实现方向，或原上下文已不再适合，则由主代理决定重新启动；独立验证应使用 `fresh` context。
+- 使用 `resume` 时，主代理必须明确传递反馈、修改要求和验收条件，并保存最新 `runId`。
 
 ## Design discipline
 
