@@ -139,7 +139,6 @@ preflight_static_layout() {
     preflight_file "$PI_DIR/AGENTS.md" "$PI_AGENT_DIR/AGENTS.md" "agent-AGENTS.md"
     preflight_file "$PI_DIR/proxy-router.json" "$PROXY_ROUTER_FILE" "proxy-router.json"
     preflight_file "$PI_DIR/subagents.json" "$SUBAGENTS_FILE" "subagents.json"
-    preflight_dir_contents "$PI_DIR/agents" "$PI_AGENT_DIR/agents" "agents"
     preflight_dir_contents "$PI_DIR/prompts" "$PI_AGENT_DIR/prompts" "prompts"
     preflight_dir_contents "$PI_DIR/skills" "$GLOBAL_SKILLS_DIR" "skills"
     preflight_extensions
@@ -247,7 +246,6 @@ ensure_static_layout() {
     ensure_file_link "$PI_DIR/AGENTS.md" "$PI_AGENT_DIR/AGENTS.md" "agent-AGENTS.md"
     ensure_file_link "$PI_DIR/proxy-router.json" "$PROXY_ROUTER_FILE" "proxy-router.json"
     ensure_file_link "$PI_DIR/subagents.json" "$SUBAGENTS_FILE" "subagents.json"
-    ensure_dir_link "$PI_DIR/agents" "$PI_AGENT_DIR/agents" "agent-agents"
     ensure_dir_link "$PI_DIR/prompts" "$PI_AGENT_DIR/prompts" "agent-prompts"
     ensure_dir_link "$PI_DIR/skills" "$GLOBAL_SKILLS_DIR" "global-skills"
 
