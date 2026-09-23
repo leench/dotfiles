@@ -287,7 +287,6 @@ spawn-at-startup "vicinae" "server"
 // DMS owns org.freedesktop.Notifications; do not start mako alongside it.
 // spawn-at-startup "mako"
 spawn-at-startup "mpd"
-spawn-at-startup "lan-mouse" "daemon"
 // spawn-at-startup "/home/niri/.local/bin/random_wallpaper.sh"
 // spawn-at-startup "env" "LC_ALL=en_US.UTF-8" "waybar"
 // spawn-at-startup "sh" "-c" "export LANG=zh_CN.UTF-8; dms"
