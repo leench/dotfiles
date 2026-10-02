@@ -404,16 +404,6 @@ window-rule {
     default-window-height { fixed 800; }
 }
 
-// RO 客户端（Wine + gamescope）：浮动、不抢焦点；尺寸与 2 号工作区由启动脚本设置
-// （niri 的 open-on-workspace 只支持命名工作区，2/3 是普通编号工作区）
-window-rule {
-    match app-id=r#"^gamescope$"#
-    open-floating true
-    open-focused false
-    default-column-width { fixed 1829; }
-    default-window-height { fixed 1029; }
-}
-
 // TUI Apps floating rules
 window-rule {
     match title=r#"^impala$"#
