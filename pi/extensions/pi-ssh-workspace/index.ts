@@ -540,8 +540,8 @@ export default function (pi: ExtensionAPI): void {
 				});
 				return;
 			}
-			if (savedAlias || legacyAlias) {
-				const alias = savedAlias ?? legacyAlias;
+			const alias = savedAlias ?? legacyAlias;
+			if (alias) {
 				const restored =
 					savedState ??
 					({

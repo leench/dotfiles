@@ -3,6 +3,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { TUI } from "@earendil-works/pi-tui";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -137,6 +138,8 @@ type AsyncStatus = {
 	usage?: unknown;
 	n?: unknown;
 	steps?: unknown;
+	/** Workflow containers only: child run inventory (`children`, `workflowRunId`, ...). */
+	workflowChildren?: unknown;
 };
 
 type TrackedRun = {
@@ -466,7 +469,7 @@ function observedSteps(run: TrackedRun, status: AsyncStatus | undefined): AsyncS
 function runIdentity(
 	run: TrackedRun,
 	status: AsyncStatus | undefined,
-): { roles: string[]; models: string[]; thinkings: string[] } {
+): { roles: string[] } {
 	const data = asObject(status);
 	const steps = observedSteps(run, status);
 	const runningSteps = steps.filter(
@@ -480,31 +483,9 @@ function runIdentity(
 			),
 		),
 	];
-	const models = [
-		...new Set(
-			identitySteps
-				.map((step) => asString(step.model))
-				.filter((value): value is string => Boolean(value)),
-		),
-	];
-	const thinkings = [
-		...new Set(
-			identitySteps
-				.map((step) => asString(step.thinking))
-				.filter((value): value is string => Boolean(value)),
-		),
-	];
 	if (roles.length === 0)
 		roles.push(formatAgent(data?.agent ?? data?.agents, run.label));
-	if (models.length === 0) {
-		const model = run.model ?? asString(data?.model);
-		if (model) models.push(model);
-	}
-	if (thinkings.length === 0) {
-		const thinking = asString(data?.thinking);
-		if (thinking) thinkings.push(thinking);
-	}
-	return { roles, models, thinkings };
+	return { roles };
 }
 
 function latestActivityAt(
@@ -633,8 +614,18 @@ function runDetailLines(
 			step?.agent ?? step?.label ?? (isCurrent ? data?.agent ?? data?.agents : undefined),
 			run.label,
 		);
+		// Each row reports the model and thinking level of its own run/step, never
+		// an aggregate over the other tracked subagents.
+		const model =
+			asString(step?.model) ??
+			(isCurrent ? run.model ?? asString(data?.model) : undefined);
+		const thinking =
+			asString(step?.thinking) ??
+			(isCurrent ? asString(data?.thinking) : undefined);
 		const parts = [
 			run.foreground ? "sync" : "async",
+			...(model ? [`model ${model}`] : []),
+			...(thinking ? [`thinking ${thinking}`] : []),
 			`up ${formatDuration(now - startedAt)}`,
 			`last ${formatDuration(idleFor)} ago`,
 		];
@@ -713,6 +704,18 @@ function terminalState(state: string): boolean {
 	);
 }
 
+// A workflow record is a container, not an executing agent: its `steps` are
+// child run references (`async: true` with the child `runId`, whose own status
+// names this run as `parentWorkflowRunId`), so it must not be counted as a
+// subagent or reported as stalled for having no progress of its own.
+function isWorkflowRecord(status: AsyncStatus | undefined): boolean {
+	const data = asObject(status);
+	return (
+		asString(data?.mode) === "workflow" ||
+		asObject(data?.workflowChildren) !== undefined
+	);
+}
+
 function safeAsyncDir(value: unknown): string | undefined {
 	const raw = asString(value);
 	if (!raw) return undefined;
@@ -753,16 +756,11 @@ function readStatus(asyncDir: string): AsyncStatus | undefined {
 	return asObject(value) as AsyncStatus | undefined;
 }
 
-function requestRender(ctx: ExtensionContext | undefined): void {
-	try {
-		(ctx?.ui as unknown as { requestRender?: () => void })?.requestRender?.();
-	} catch {
-		// Session replacement can invalidate the old UI context. The next session_start repairs it.
-	}
-}
-
 export default function subagentLiveTail(pi: ExtensionAPI) {
 	let currentCtx: ExtensionContext | undefined;
+	// Injected by the widget factory; cleared when the widget is removed so a
+	// replaced session can never be rendered through a stale TUI object.
+	let widgetTui: TUI | undefined;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let widgetInstalled = false;
 	let lastDiscoveryAt = 0;
@@ -771,6 +769,14 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 	let tailLines = DEFAULT_TAIL_LINES;
 	let logs: LogEntry[] = [];
 	const runs = new Map<string, TrackedRun>();
+
+	function requestRender(): void {
+		try {
+			widgetTui?.requestRender();
+		} catch {
+			// A replaced session can invalidate the TUI; the next widget install repairs it.
+		}
+	}
 
 	function appendLog(text: unknown, level: LogLevel = "info"): void {
 		const source = sanitizeLine(text);
@@ -785,7 +791,11 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 	}
 
 	function activeRuns(): TrackedRun[] {
-		return [...runs.values()].filter((run) => !terminalState(run.state));
+		return [...runs.values()].filter(
+			(run) =>
+				!terminalState(run.state) &&
+				!isWorkflowRecord(run.asyncDir ? readStatus(run.asyncDir) : undefined),
+		);
 	}
 
 	function activeChildCount(active: TrackedRun[]): number {
@@ -830,17 +840,10 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 			status: run.asyncDir ? readStatus(run.asyncDir) : undefined,
 		}));
 		const activeChildTotal = activeChildCount(active);
-		const identities = activeStatuses.map(({ run, status }) =>
-			runIdentity(run, status),
-		);
 		const roles = [
-			...new Set(identities.flatMap((identity) => identity.roles)),
-		];
-		const models = [
-			...new Set(identities.flatMap((identity) => identity.models)),
-		];
-		const thinkings = [
-			...new Set(identities.flatMap((identity) => identity.thinkings)),
+			...new Set(
+				activeStatuses.flatMap(({ run, status }) => runIdentity(run, status).roles),
+			),
 		];
 		const roleColors = new Map<string, ThemeColor>();
 		for (const [index, role] of roles.entries())
@@ -862,11 +865,7 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 								theme.fg(roleColors.get(role) ?? "accent", role),
 							)
 							.join(theme.fg("accent", "+"))
-						: theme.fg("accent", "unknown")) +
-					theme.fg(
-						"accent",
-						` · model ${models.join("+") || "unknown"} · thinking ${thinkings.join("+") || "unknown"}`,
-					)
+						: theme.fg("accent", "unknown"))
 				: "";
 		lines.push(
 			theme.fg("accent", `${headerPrefix}${paused ? " · paused" : ""}`) +
@@ -945,19 +944,23 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		if (!widgetInstalled) {
 			ctx.ui.setWidget(
 				WIDGET_ID,
-				(_tui, theme) => ({
-					render: (width: number) => renderPanel(width, theme),
-					invalidate: () => undefined,
-				}),
+				(tui, theme) => {
+					widgetTui = tui;
+					return {
+						render: (width: number) => renderPanel(width, theme),
+						invalidate: () => undefined,
+					};
+				},
 				{ placement: "aboveEditor" },
 			);
 			widgetInstalled = true;
 		}
 		updateStatus();
-		requestRender(ctx);
+		requestRender();
 	}
 
 	function removeWidget(ctx: ExtensionContext): void {
+		widgetTui = undefined;
 		if (!widgetInstalled) return;
 		ctx.ui.setWidget(WIDGET_ID, undefined);
 		widgetInstalled = false;
@@ -972,7 +975,7 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 			if (active.length === 0) logs = [];
 		}
 		updateStatus();
-		requestRender(currentCtx);
+		requestRender();
 	}
 
 	function rememberRun(run: TrackedRun): void {
@@ -1130,7 +1133,7 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		if (activeRuns().length === 0) refreshUi();
 		else {
 			updateStatus();
-			requestRender(currentCtx);
+			requestRender();
 		}
 	}
 
@@ -1237,7 +1240,7 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 			const progress = asObject(result?.progress) as AsyncStep | undefined;
 			if (progress) updateStep(run, progress, index);
 		}
-		requestRender(currentCtx);
+		requestRender();
 	}
 
 	function attachAsyncRun(run: TrackedRun, reference: AsyncReference): void {
