@@ -11,6 +11,7 @@ GLOBAL_SKILLS_DIR="$GLOBAL_AGENTS_DIR/skills"
 SETTINGS_FILE="$PI_AGENT_DIR/settings.json"
 PROXY_ROUTER_FILE="$PI_AGENT_DIR/proxy-router.json"
 SUBAGENTS_FILE="$PI_AGENT_DIR/subagents.json"
+JEV_ROUTER_FILE="$PI_AGENT_DIR/jev-router.json"
 HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
 HOST_DEFAULTS_DIR="${PI_HOST_DEFAULTS_DIR:-$PI_AGENT_DIR/host-defaults}"
 HOST_DEFAULTS="$HOST_DEFAULTS_DIR/$HOSTNAME_SHORT.json"
@@ -268,6 +269,7 @@ ensure_static_layout() {
         "remote-skills/agent-network/SKILL.md"
 
     copy_if_missing "$PI_DIR/remote-pi/config.json" "$HOME_DIR/.pi/remote-pi/config.json"
+    copy_if_missing "$PI_DIR/jev-router.json" "$JEV_ROUTER_FILE"
     copy_if_missing "$PI_DIR/pi-atelier.json" "$PI_AGENT_DIR/pi-atelier.json"
     copy_if_missing "$PI_DIR/skill-lock.json" "$GLOBAL_AGENTS_DIR/.skill-lock.json"
 }

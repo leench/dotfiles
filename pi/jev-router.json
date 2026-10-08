@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "mode": "shadow",
+  "model": "jev-1.13-free",
+  "timeoutMs": 3000,
+  "maxStateChars": 4000,
+  "logging": true
+}

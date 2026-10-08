@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "rename-known-field",
+      "state": "用户要求：把已经定位的 UserProfile 模块中的字段 displayName 重命名为 publicName。引用位置已知，要求明确，只需完成这次小范围改名。"
+    },
+    {
+      "id": "fix-located-bug",
+      "state": "用户要求：修复已经定位到的日期解析函数在闰日输入上报错的问题。复现步骤和出错函数都已提供，修复范围很小。"
+    },
+    {
+      "id": "known-endpoint-feature",
+      "state": "用户要求：给已知的 Django Ninja 用户列表接口增加分页。相关接口位置已知，项目使用 PostgreSQL，现有响应结构需要保持兼容。"
+    },
+    {
+      "id": "unknown-production-error",
+      "state": "用户报告生产环境间歇性出现 HTTP 500，但没有稳定复现步骤，也不知道涉及哪个模块或依赖。用户希望先查明原因，暂未要求修改代码。"
+    },
+    {
+      "id": "specified-multimodule-refactor",
+      "state": "用户要求重构一组已明确列出的多个模块，目标行为和验收要求都已写清楚，涉及文件也已定位。改动量较大，但不需要先判断需求或寻找代码位置。"
+    },
+    {
+      "id": "new-feature-uncertain-code",
+      "state": "用户要求在现有应用中增加一个较大型的团队邀请功能，主要行为已说明，但尚不清楚项目现有的用户、权限和邮件模块如何协作。需要先理解代码结构，再决定实施方案。"
+    },
+    {
+      "id": "simple-documentation",
+      "state": "用户要求修正文档中一处已指出的命令拼写错误，目标文件和具体行都已给出。"
+    },
+    {
+      "id": "clear-repetitive-update",
+      "state": "用户要求在 40 个已列明的文件中，将同一个已弃用配置键替换为新键。映射规则明确，文件列表已确认，不需要探索代码关系。"
+    }
+  ]
+}
