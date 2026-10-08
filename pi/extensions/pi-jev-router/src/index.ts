@@ -218,7 +218,8 @@ export default function (pi: ExtensionAPI) {
       const glyph = SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
       frame += 1;
       try {
-        ctx.ui.setWidget(JUDGE_WIDGET_KEY, [`${glyph} Jev 判断中…`], { placement: "aboveEditor" });
+        // Text treats a trailing newline as one blank row beneath the spinner.
+        ctx.ui.setWidget(JUDGE_WIDGET_KEY, [`${glyph} Jev 判断中…\n`], { placement: "aboveEditor" });
       } catch {
         stopJudgeSpinner(); // widget 不可用：整体停止，避免每帧重试
       }
@@ -256,12 +257,14 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  /** 本轮 user 条目是否已经落盘：branch 叶子相对本轮开始时前进了，且文本与当前 prompt 一致。 */
+  /** 本轮 user 条目是否已经落盘：文本匹配当前 prompt；图片归一化可能只在末尾附加提示。 */
   function promptEntryLanded(ctx: ExtensionContext, prompt: string, leafIdAtStart: string | null): boolean {
     const branch = ctx.sessionManager.getBranch();
     const leaf = branch[branch.length - 1];
     if (!leaf || leaf.type !== "message" || leaf.id === leafIdAtStart) return false;
-    return leaf.message.role === "user" && messageText(leaf.message) === prompt;
+    if (leaf.message.role !== "user") return false;
+    const text = messageText(leaf.message);
+    return text === prompt || text.startsWith(`${prompt}\n\n`);
   }
 
   /** 结果行落位；本轮提问尚未落盘时挂起，只有会话更换才丢弃。 */
@@ -420,6 +423,13 @@ export default function (pi: ExtensionAPI) {
       ].join("\n");
     }
     showJudgeLine(ctx, round, outcome);
+  });
+
+  pi.on("message_end", (event, ctx) => {
+    if (event.message.role !== "user") return;
+    // This extension hook runs before SessionManager persists the user entry.
+    // Defer one event-loop turn so the result is appended after the prompt, before model latency.
+    setTimeout(() => flushJudgeLines(ctx, false), 0);
   });
 
   pi.on("message_start", (event, ctx) => {
