@@ -155,13 +155,13 @@ stat -c '%a %F %n' "$HOME/.pi/agent/settings.json" "$HOME/.pi/agent/auth.json"
 /jev-router status
 ```
 
-如果本机状态显示已关闭，且要参与 Jev 体验测试，再执行 `/jev-router on`。不要从其他电脑复制 `auth.json`。
+如果本机状态显示已关闭，运行 `/jev-router suggest` 可启用 Jev 建议；`/jev-router on` 则启用当前模式。不要从其他电脑复制 `auth.json`。
 
 ## 5. 主机专属配置
 
 主机专属配置属于本机状态，不放入 dotfiles 仓库。`~/.pi/agent/agents/` 中的自定义子代理定义也属于本机配置，
 不由本同步脚本管理；全机器共用的 Pi subagent 运行时策略由 `pi/extensions/subagent/config.json` 和
-`pi/defaults/common.json` 管理。`jev-router.json` 也是本机可切换配置：dotfiles 仅提供首次启用的 Shadow 模板，`/jev-router on|off` 和 JSONL 日志各自保留在本机。首次创建或显式应用 defaults 时，脚本会读取：
+`pi/defaults/common.json` 管理。`jev-router.json` 也是本机可切换配置：dotfiles 仅提供首次启用的 Suggest 模板，`/jev-router on|off|suggest|shadow` 和 JSONL 日志各自保留在本机。首次创建或显式应用 defaults 时，脚本会读取：
 
 - 所有电脑使用仓库中的 `pi/defaults/common.json`
 - 如果存在，则额外使用 `~/.pi/agent/host-defaults/<hostname>.json`

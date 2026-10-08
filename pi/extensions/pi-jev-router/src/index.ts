@@ -7,6 +7,7 @@ import {
   DEFAULT_MODEL_ID,
   JevRequestError,
   ROUTES,
+  ROUTE_CRITERIA,
   type JevDecision,
   type Route,
 } from "./jev-client.ts";
@@ -46,25 +47,26 @@ function appendJsonLineQuietly(path: string, value: Record<string, unknown>): vo
   try {
     appendJsonLine(path, value);
   } catch {
-    // Shadow logging must never interrupt the user's task.
+    // Logging must never interrupt the user's task.
   }
 }
 
 interface LiveTask {
   taskId: string;
+  mode: RouterConfig["mode"];
   sessionId: string;
   mainModel: string;
   logging: boolean;
 }
 
-interface ShadowInput {
+interface EvaluationInput {
   state: string;
   inputChars: number;
   sentChars: number;
   truncated: boolean;
 }
 
-function createShadowInput(prompt: string, imageCount: number, maxChars: number): ShadowInput {
+function createEvaluationInput(prompt: string, imageCount: number, maxChars: number): EvaluationInput {
   let state = prompt.trim();
   if (imageCount > 0) {
     const note = `[${imageCount} image attachment${imageCount === 1 ? "" : "s"}; image content is not sent to Jev.]`;
@@ -80,19 +82,19 @@ function errorCode(error: unknown): string {
   return error instanceof JevRequestError ? error.code : "unexpected_error";
 }
 
-async function runShadow(
+async function runEvaluation(
   ctx: ExtensionContext,
   task: LiveTask,
-  input: ShadowInput,
+  input: EvaluationInput,
   config: RouterConfig,
-): Promise<void> {
+): Promise<JevDecision | undefined> {
   const logPath = join(getAgentDir(), SHADOW_LOG_FILENAME);
   const startedAt = Date.now();
   let jevModel = config.model;
   const baseRecord = () => ({
     timestamp: new Date().toISOString(),
-    source: "shadow",
-    mode: "shadow",
+    source: task.mode,
+    mode: task.mode,
     runId: task.taskId,
     taskId: task.taskId,
     sessionId: task.sessionId,
@@ -117,24 +119,27 @@ async function runShadow(
       modelId: model.id,
       timeoutMs: config.timeoutMs,
     });
-    if (!config.logging) return;
-
-    appendJsonLineQuietly(logPath, {
-      ...baseRecord(),
-      route: decision.route,
-      probabilities: decision.probabilities,
-      durationMs: Date.now() - startedAt,
-      ...(decision.confidence !== undefined ? { confidence: decision.confidence } : {}),
-      ...(decision.inputTokens !== undefined ? { inputTokens: decision.inputTokens } : {}),
-      ...(decision.outputTokens !== undefined ? { outputTokens: decision.outputTokens } : {}),
-    });
+    if (config.logging) {
+      appendJsonLineQuietly(logPath, {
+        ...baseRecord(),
+        route: decision.route,
+        probabilities: decision.probabilities,
+        durationMs: Date.now() - startedAt,
+        ...(decision.confidence !== undefined ? { confidence: decision.confidence } : {}),
+        ...(decision.inputTokens !== undefined ? { inputTokens: decision.inputTokens } : {}),
+        ...(decision.outputTokens !== undefined ? { outputTokens: decision.outputTokens } : {}),
+      });
+    }
+    return decision;
   } catch (error) {
-    if (!config.logging) return;
-    appendJsonLineQuietly(logPath, {
-      ...baseRecord(),
-      durationMs: Date.now() - startedAt,
-      error: errorCode(error),
-    });
+    if (config.logging) {
+      appendJsonLineQuietly(logPath, {
+        ...baseRecord(),
+        durationMs: Date.now() - startedAt,
+        error: errorCode(error),
+      });
+    }
+    return undefined;
   }
 }
 
@@ -175,16 +180,21 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("jev-router", {
-    description: "查看或开关 Jev Shadow 路由评估",
+    description: "查看、切换或关闭 Jev 路由评估",
     handler: async (args, ctx) => {
       const action = args.trim().toLowerCase() || "status";
-      if (action !== "status" && action !== "on" && action !== "off") {
-        ctx.ui.notify("用法：/jev-router [status|on|off]", "warning");
+      if (!["status", "on", "off", "suggest", "shadow"].includes(action)) {
+        ctx.ui.notify("用法：/jev-router [status|on|off|suggest|shadow]", "warning");
         return;
       }
 
-      if (action === "on" || action === "off") {
-        const nextConfig = { ...routerConfig, enabled: action === "on" };
+      if (action !== "status") {
+        const nextConfig =
+          action === "off"
+            ? { ...routerConfig, enabled: false }
+            : action === "suggest" || action === "shadow"
+              ? { ...routerConfig, enabled: true, mode: action }
+              : { ...routerConfig, enabled: true };
         try {
           saveRouterConfig(configPath, nextConfig);
         } catch {
@@ -194,7 +204,12 @@ export default function (pi: ExtensionAPI) {
         routerConfig = nextConfig;
         configError = undefined;
         if (!routerConfig.enabled) activeTask = undefined;
-        ctx.ui.notify(`Jev Shadow 已${routerConfig.enabled ? "启用" : "关闭"}；不会注入路由建议。`, "info");
+        const message = routerConfig.enabled
+          ? routerConfig.mode === "suggest"
+            ? "Jev Suggest 已启用；路由建议仅供参考，不会自动调用子代理。"
+            : "Jev Shadow 已启用；只记录决策，不注入建议。"
+          : "Jev 路由已关闭；不会进行新的评估或注入建议。";
+        ctx.ui.notify(message, "info");
         return;
       }
 
@@ -206,9 +221,10 @@ export default function (pi: ExtensionAPI) {
         apiKey = undefined;
       }
       const authStatus = !model ? "模型不可用" : apiKey ? "认证可用" : "缺少 OpenCode 认证";
+      const modeStatus = routerConfig.mode === "suggest" ? "Suggest" : "Shadow";
       ctx.ui.notify(
         [
-          `Jev Shadow：${routerConfig.enabled ? "已启用" : "已关闭"}（${authStatus}）`,
+          `Jev 路由：${routerConfig.enabled ? `${modeStatus} 已启用` : "已关闭"}（${authStatus}）`,
           `超时 ${routerConfig.timeoutMs} ms；最多发送 ${routerConfig.maxStateChars} 字符；日志 ${routerConfig.logging ? shadowLogPath : "关闭"}`,
           ...(configError ? [configError] : []),
         ].join("\n"),
@@ -217,7 +233,8 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.on("before_agent_start", (event, ctx) => {
+  pi.on("before_agent_start", async (event, ctx) => {
+    delete event.systemPromptOptions.sections.pi_jev_router;
     if (!routerConfig.enabled || process.env[SUBAGENT_CHILD_ENV] === "1") {
       activeTask = undefined;
       return;
@@ -228,17 +245,34 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    const input = createShadowInput(prompt, event.images?.length ?? 0, routerConfig.maxStateChars);
+    const config = { ...routerConfig };
+    const input = createEvaluationInput(prompt, event.images?.length ?? 0, config.maxStateChars);
     const task: LiveTask = {
       taskId: randomUUID(),
+      mode: config.mode,
       sessionId: ctx.sessionManager.getSessionId(),
       mainModel: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "unknown",
-      logging: routerConfig.logging,
+      logging: config.logging,
     };
     activeTask = task;
 
-    // Run in the background so Shadow mode adds no delay or prompt changes to the main task.
-    void runShadow(ctx, task, input, { ...routerConfig });
+    if (config.mode === "shadow") {
+      // Shadow mode records the decision without delaying or modifying the main task.
+      void runEvaluation(ctx, task, input, config);
+      return;
+    }
+
+    const decision = await runEvaluation(ctx, task, input, config);
+    if (!decision || !routerConfig.enabled || routerConfig.mode !== "suggest") return;
+
+    const probabilities = ROUTES
+      .map((route) => `${route} ${Math.round(decision.probabilities[route] * 100)}%`)
+      .join(", ");
+    event.systemPromptOptions.sections.pi_jev_router = [
+      "## Jev 可选路由建议",
+      `Jev 推荐策略：${decision.route}（${ROUTE_CRITERIA[decision.route]}）；策略概率：${probabilities}。`,
+      "此建议仅供参考，不是执行指令。遵循用户明确要求，并结合现有工作流、可用工具和你自己的判断决定是否采纳；不要仅因建议而自动调用子代理，也不要更改模型、思考强度、权限或远程执行设置。",
+    ].join("\n");
   });
 
   pi.on("tool_call", (event) => {
@@ -258,6 +292,7 @@ export default function (pi: ExtensionAPI) {
     appendJsonLineQuietly(shadowLogPath, {
       timestamp: new Date().toISOString(),
       source: "subagent_call",
+      mode: task.mode,
       runId: task.taskId,
       taskId: task.taskId,
       sessionId: task.sessionId,

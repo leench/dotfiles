@@ -23,7 +23,7 @@ function configPath(): string {
   return join(directory, "jev-router.json");
 }
 
-test("uses enabled Shadow defaults when no config file exists", () => {
+test("uses enabled Suggest defaults when no config file exists", () => {
   const loaded = loadRouterConfig(configPath());
   assert.deepEqual(loaded.config, DEFAULT_ROUTER_CONFIG);
   assert.equal(loaded.error, undefined);
@@ -42,12 +42,21 @@ test("fails closed when the config cannot be parsed", () => {
 
   const loaded = loadRouterConfig(path);
   assert.equal(loaded.config.enabled, false);
-  assert.match(loaded.error ?? "", /Shadow 已关闭/);
+  assert.match(loaded.error ?? "", /Jev 路由已关闭/);
+});
+
+test("accepts the Shadow mode for explicit comparison", () => {
+  const path = configPath();
+  writeFileSync(path, JSON.stringify({ ...DEFAULT_ROUTER_CONFIG, mode: "shadow" }), "utf8");
+
+  const loaded = loadRouterConfig(path);
+  assert.equal(loaded.config.mode, "shadow");
+  assert.equal(loaded.config.enabled, true);
 });
 
 test("fails closed for unsupported modes and out-of-range values", () => {
   const path = configPath();
-  writeFileSync(path, JSON.stringify({ mode: "suggest", timeoutMs: 60_000 }), "utf8");
+  writeFileSync(path, JSON.stringify({ mode: "invalid", timeoutMs: 60_000 }), "utf8");
 
   const loaded = loadRouterConfig(path);
   assert.equal(loaded.config.enabled, false);

@@ -4,7 +4,7 @@ import { DEFAULT_MODEL_ID } from "./jev-client.ts";
 
 export interface RouterConfig {
   enabled: boolean;
-  mode: "shadow";
+  mode: "shadow" | "suggest";
   model: typeof DEFAULT_MODEL_ID;
   timeoutMs: number;
   maxStateChars: number;
@@ -13,7 +13,7 @@ export interface RouterConfig {
 
 export const DEFAULT_ROUTER_CONFIG: RouterConfig = {
   enabled: true,
-  mode: "shadow",
+  mode: "suggest",
   model: DEFAULT_MODEL_ID,
   timeoutMs: 3_000,
   maxStateChars: 4_000,
@@ -32,7 +32,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function invalidConfig(): LoadedRouterConfig {
   return {
     config: { ...DEFAULT_ROUTER_CONFIG, enabled: false },
-    error: "配置无效；为避免意外发送任务，Shadow 已关闭。运行 /jev-router on 可重写配置。",
+    error: "配置无效；为避免意外发送任务，Jev 路由已关闭。运行 /jev-router on 可重写配置。",
   };
 }
 
@@ -46,7 +46,7 @@ export function loadRouterConfig(path: string): LoadedRouterConfig {
     }
     return {
       config: { ...DEFAULT_ROUTER_CONFIG, enabled: false },
-      error: "无法读取配置；为避免意外发送任务，Shadow 已关闭。运行 /jev-router on 可重写配置。",
+      error: "无法读取配置；为避免意外发送任务，Jev 路由已关闭。运行 /jev-router on 可重写配置。",
     };
   }
 
@@ -67,7 +67,7 @@ export function loadRouterConfig(path: string): LoadedRouterConfig {
 
   if (
     typeof enabled !== "boolean" ||
-    mode !== "shadow" ||
+    (mode !== "shadow" && mode !== "suggest") ||
     model !== DEFAULT_MODEL_ID ||
     typeof timeoutMs !== "number" || !Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30_000 ||
     typeof maxStateChars !== "number" || !Number.isSafeInteger(maxStateChars) || maxStateChars < 1 || maxStateChars > 4_000 ||

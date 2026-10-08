@@ -8,8 +8,9 @@ are linked into Pi's user directories. The main
 The proxy rules are kept separately in `proxy-router.json` and linked to
 `~/.pi/agent/proxy-router.json`, so they can be versioned without mixing them
 with Pi's runtime settings. Jev routing uses `jev-router.json` as a shared
-initial config; `sync.sh` copies it only when the host-local file is missing,
-so `/jev-router on|off` does not modify the shared template. Evaluation logs,
+initial Suggest config; `sync.sh` copies it only when the host-local file is missing,
+so `/jev-router on|off|suggest|shadow` does not modify the shared template.
+Evaluation logs,
 credentials, sessions and other runtime state remain local. Packages and
 extensions present only on the local machine are preserved. Extension
 `node_modules` stay under `~/.pi/agent/extensions` and receive an ignored
@@ -25,7 +26,7 @@ repository with `--recurse-submodules`, or run `git submodule update --init
 
 - `packages.txt`: pinned third-party Pi packages
 - `proxy-router.json`: versioned model/auth proxy rules, linked independently
-- `jev-router.json`: Shadow-enabled Jev config template, copied only if the local file is missing
+- `jev-router.json`: Suggest-enabled Jev config template, copied only if the local file is missing
 - `extensions/pi-jev-router/`: shared Jev extension source, linked file-by-file into Pi's extension directory
 - `extensions/subagent/config.json`: synchronized pi-subagents runtime config
 - `extensions/pi-subagent-fresh-agents.ts`: clears pi-subagents' agent discovery cache before fresh launches; resumes keep their original model and prompt

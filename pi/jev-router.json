@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "mode": "shadow",
+  "mode": "suggest",
   "model": "jev-1.13-free",
   "timeoutMs": 3000,
   "maxStateChars": 4000,
