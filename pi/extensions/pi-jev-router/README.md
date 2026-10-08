@@ -4,13 +4,15 @@ Jev task-routing and delegation for Pi. The extension uses Pi's model registry a
 
 ## Suggest mode (default)
 
-Each ordinary user prompt triggers one Jev evaluation before the main agent starts. The System One request uses the configured timeout (3000 ms by default). On success, the extension adds Jev's selected route and probabilities to the system prompt as an execution instruction: `scout` and `worker` require an actual call to the matching `subagent`; `scout_worker` requires sequential scout and worker calls; `direct` means handle the task without a subagent. The main model still issues these tool calls, so this prompt-driven behavior cannot guarantee that the model will follow the instruction. It does not change the model, thinking level, permissions, or remote-execution settings. Missing authentication, model errors, network failures, and timeouts fail open without a route instruction.
+Each ordinary user prompt triggers one Jev evaluation before the main agent starts. The System One request uses the configured timeout (3000 ms by default). While the evaluation runs, the footer shows a spinner (`⠋ Jev 判断中…`). On success, the extension adds Jev's selected route and probabilities to the system prompt as an execution instruction: `scout` and `worker` require an actual call to the matching `subagent`; `scout_worker` requires sequential scout and worker calls; `direct` means handle the task without a subagent. The main model still issues these tool calls, so this prompt-driven behavior cannot guarantee that the model will follow the instruction. It does not change the model, thinking level, permissions, or remote-execution settings. Missing authentication, model errors, network failures, and timeouts fail open without a route instruction.
+
+Every evaluation also writes one persistent line to the current session, for example `Jev [Suggest] scout 67% · direct 30% · worker 1% · scout_worker 2%` or `Jev [Suggest] 失败：timeout`. The line is a custom session entry, so it stays visible in the transcript but is never sent to the LLM.
 
 ## Shadow mode
 
 Shadow mode evaluates ordinary prompts in the background and logs the result without adding a suggestion to the prompt. Subagent runner processes marked by `PI_SUBAGENT_CHILD=1` are excluded in both modes to prevent recursive evaluations.
 
-In both modes, the prompt text Pi provides to the extension (after Pi expansion) is sent to `https://opencode.ai/zen/v1/systemone`, capped at 4000 characters by default. If the prompt includes images, Jev receives only a note that images are attached, not the image data. The prompt itself is not saved in the log. Be aware that expanded prompt text may include file contents.
+In both modes, the prompt text Pi provides to the extension (after Pi expansion) is sent to `https://opencode.ai/zen/v1/systemone`, capped at 4000 characters by default. The request also carries up to the last three previous turns: each turn's user text plus the last assistant text of that turn. Thinking, tool calls, and tool results are never included. The current prompt comes first and wins the character budget: when the cap is hit, the oldest turns are dropped first, and the prompt itself is truncated only when it alone exceeds the limit. If the prompt includes images, Jev receives only a note that images are attached, not the image data. The prompt and history are not saved in the log. Be aware that expanded prompt text may include file contents.
 
 Use these commands in Pi:
 

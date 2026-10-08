@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import {
   callJev,
   DEFAULT_MODEL_ID,
@@ -14,11 +15,23 @@ import {
 } from "./jev-client.ts";
 import { loadRouterConfig, saveRouterConfig, type RouterConfig } from "./config.ts";
 import { loadFixedTasks } from "./tasks.ts";
+import {
+  collectRecentHistory,
+  createEvaluationInput,
+  formatDecisionLine,
+  formatFailureLine,
+  messageText,
+  type EvaluationInput,
+} from "./history.ts";
 
 const DEFAULT_REPETITIONS = 3;
 const MAX_REPETITIONS = 10;
 const REQUEST_TIMEOUT_MS = 3_000;
 const STATUS_KEY = "pi-jev-router";
+const JUDGE_STATUS_KEY = "pi-jev-router-judge";
+const JUDGE_ENTRY_TYPE = "jev-router-decision";
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER_INTERVAL_MS = 80;
 const SHADOW_LOG_FILENAME = "jev-router-shadow.jsonl";
 const CONFIG_FILENAME = "jev-router.json";
 const SUBAGENT_CHILD_ENV = "PI_SUBAGENT_CHILD";
@@ -60,23 +73,17 @@ interface LiveTask {
   logging: boolean;
 }
 
-interface EvaluationInput {
-  state: string;
-  inputChars: number;
-  sentChars: number;
-  truncated: boolean;
-}
+type EvaluationOutcome = { ok: true; decision: JevDecision } | { ok: false; code: string };
 
-function createEvaluationInput(prompt: string, imageCount: number, maxChars: number): EvaluationInput {
-  let state = prompt.trim();
-  if (imageCount > 0) {
-    const note = `[${imageCount} image attachment${imageCount === 1 ? "" : "s"}; image content is not sent to Jev.]`;
-    state = state ? `${state}\n\n${note}` : note;
-  }
-  const inputChars = state.length;
-  const truncated = inputChars > maxChars;
-  state = state.slice(0, maxChars);
-  return { state, inputChars, sentChars: state.length, truncated };
+/** 一轮路由评估：结果行落位前保存在 rounds 中；会话更换后在途结果作废。 */
+interface JudgeRound extends LiveTask {
+  prompt: string;
+  leafIdAtStart: string | null;
+  /** 生成号：session_shutdown 后递增，旧生成的在途结果不再写入。 */
+  generation: number;
+  ended: boolean;
+  /** 已算出但尚未落位的结果行；每轮各自一个槽位，不会互相覆盖。 */
+  pendingLine?: string;
 }
 
 function errorCode(error: unknown): string {
@@ -88,7 +95,7 @@ async function runEvaluation(
   task: LiveTask,
   input: EvaluationInput,
   config: RouterConfig,
-): Promise<JevDecision | undefined> {
+): Promise<EvaluationOutcome> {
   const logPath = join(getAgentDir(), SHADOW_LOG_FILENAME);
   const startedAt = Date.now();
   let jevModel = config.model;
@@ -131,16 +138,17 @@ async function runEvaluation(
         ...(decision.outputTokens !== undefined ? { outputTokens: decision.outputTokens } : {}),
       });
     }
-    return decision;
+    return { ok: true, decision };
   } catch (error) {
+    const code = errorCode(error);
     if (config.logging) {
       appendJsonLineQuietly(logPath, {
         ...baseRecord(),
         durationMs: Date.now() - startedAt,
-        error: errorCode(error),
+        error: code,
       });
     }
-    return undefined;
+    return { ok: false, code };
   }
 }
 
@@ -174,10 +182,122 @@ export default function (pi: ExtensionAPI) {
   const loaded = loadRouterConfig(configPath);
   let routerConfig = loaded.config;
   let configError = loaded.error;
-  let activeTask: LiveTask | undefined;
+  let activeTask: JudgeRound | undefined;
+  let sessionGeneration = 0;
+  /** 在途轮次：结果行落位后移除；会话关闭时整体作废。 */
+  const rounds = new Map<string, JudgeRound>();
+  /** TUI 判断中动画：一个 interval 覆盖当前 session generation 内所有在途评估。 */
+  let judgeSpinner: { ctx: ExtensionContext; timer: ReturnType<typeof setInterval>; tasks: Set<string> } | undefined;
+
+  /** 移除某个在途评估；全部结束后才清 status 与 interval。不传 taskId 时无条件停止。 */
+  function stopJudgeSpinner(taskId?: string): void {
+    const spinner = judgeSpinner;
+    if (!spinner) return;
+    if (taskId !== undefined) {
+      spinner.tasks.delete(taskId);
+      if (spinner.tasks.size > 0) return; // 仍有评估在途，动画继续
+    }
+    judgeSpinner = undefined;
+    clearInterval(spinner.timer);
+    try {
+      spinner.ctx.ui.setStatus(JUDGE_STATUS_KEY, undefined);
+    } catch {
+      // 会话已被替换，没有可清理的 footer。
+    }
+  }
+
+  function startJudgeSpinner(ctx: ExtensionContext, taskId: string): void {
+    if (ctx.mode !== "tui") return; // 非 TUI 不逐帧刷 footer
+    const spinner = judgeSpinner;
+    if (spinner) {
+      spinner.tasks.add(taskId); // 已有动画在跑：只登记，不影响其他在途评估
+      return;
+    }
+    let frame = 0;
+    const render = () => {
+      const glyph = SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
+      frame += 1;
+      try {
+        ctx.ui.setStatus(JUDGE_STATUS_KEY, `${glyph} Jev 判断中…`);
+      } catch {
+        stopJudgeSpinner(); // footer 不可用：整体停止，避免每帧重试
+      }
+    };
+    render();
+    judgeSpinner = { ctx, timer: setInterval(render, SPINNER_INTERVAL_MS), tasks: new Set([taskId]) };
+  }
+
+  function appendJudgeLine(line: string): void {
+    try {
+      pi.appendEntry(JUDGE_ENTRY_TYPE, { text: line });
+    } catch {
+      // 扩展运行时已卸载（reload 或切换会话），结果只保留在 JSONL 日志里。
+    }
+  }
+
+  /** 结果行现在能否安全追加：本轮已结束，或本轮提问已经是 branch 末尾。 */
+  function canAppendJudgeLine(ctx: ExtensionContext, round: JudgeRound): boolean {
+    return round.ended || promptEntryLanded(ctx, round.prompt, round.leafIdAtStart);
+  }
+
+  /**
+   * 追加 pending 结果行。all=true 时无条件追加（新一轮开始前，新 prompt 尚未落盘，
+   * 追加位置就是上一轮末尾）；否则只追加已经可以落位的行。会话更换后的行直接丢弃。
+   */
+  function flushJudgeLines(ctx: ExtensionContext, all: boolean): void {
+    for (const round of rounds.values()) {
+      const line = round.pendingLine;
+      if (line === undefined) continue;
+      const stale = round.generation !== sessionGeneration;
+      if (!stale && !all && !canAppendJudgeLine(ctx, round)) continue;
+      round.pendingLine = undefined;
+      rounds.delete(round.taskId);
+      if (!stale) appendJudgeLine(line);
+    }
+  }
+
+  /** 本轮 user 条目是否已经落盘：branch 叶子相对本轮开始时前进了，且文本与当前 prompt 一致。 */
+  function promptEntryLanded(ctx: ExtensionContext, prompt: string, leafIdAtStart: string | null): boolean {
+    const branch = ctx.sessionManager.getBranch();
+    const leaf = branch[branch.length - 1];
+    if (!leaf || leaf.type !== "message" || leaf.id === leafIdAtStart) return false;
+    return leaf.message.role === "user" && messageText(leaf.message) === prompt;
+  }
+
+  /** 结果行落位；本轮提问尚未落盘时挂起，只有会话更换才丢弃。 */
+  function showJudgeLine(ctx: ExtensionContext, round: JudgeRound, outcome: EvaluationOutcome): void {
+    if (round.generation !== sessionGeneration) return; // 会话已更换：不写入旧会话或新会话
+    const line = outcome.ok
+      ? formatDecisionLine(round.mode, outcome.decision.route, outcome.decision.probabilities)
+      : formatFailureLine(round.mode, outcome.code);
+
+    if (canAppendJudgeLine(ctx, round)) {
+      rounds.delete(round.taskId);
+      appendJudgeLine(line);
+      return;
+    }
+    round.pendingLine = line;
+  }
+
+  pi.registerEntryRenderer<{ text: string }>(JUDGE_ENTRY_TYPE, (entry, _options, theme) => {
+    const text = entry.data?.text;
+    if (!text) return undefined;
+    return new Text(theme.fg("dim", text), 1, 0);
+  });
 
   pi.on("session_start", (_event, ctx) => {
+    // 新会话（或重载）之前启动的轮次一律作废，避免迟到结果写入当前会话。
+    sessionGeneration += 1;
+    rounds.clear();
+    stopJudgeSpinner();
     if (configError && ctx.hasUI) ctx.ui.notify(configError, "warning");
+  });
+
+  pi.on("session_shutdown", () => {
+    sessionGeneration += 1; // 在途结果作废：不再写入旧会话或之后的新会话
+    stopJudgeSpinner();
+    activeTask = undefined;
+    rounds.clear();
   });
 
   pi.registerCommand("jev-router", {
@@ -236,6 +356,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event, ctx) => {
     delete event.systemPromptOptions.sections.pi_jev_router;
+    flushJudgeLines(ctx, true); // 旧轮次未落盘的结果行先补写
     if (!routerConfig.enabled || process.env[SUBAGENT_CHILD_ENV] === "1") {
       activeTask = undefined;
       return;
@@ -247,35 +368,63 @@ export default function (pi: ExtensionAPI) {
     }
 
     const config = { ...routerConfig };
-    const input = createEvaluationInput(prompt, event.images?.length ?? 0, config.maxStateChars);
-    const task: LiveTask = {
+    const history = collectRecentHistory(ctx.sessionManager.getBranch());
+    const input = createEvaluationInput(prompt, history, event.images?.length ?? 0, config.maxStateChars);
+    const round: JudgeRound = {
       taskId: randomUUID(),
       mode: config.mode,
       sessionId: ctx.sessionManager.getSessionId(),
       mainModel: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "unknown",
       logging: config.logging,
+      prompt,
+      leafIdAtStart: ctx.sessionManager.getLeafId(),
+      generation: sessionGeneration,
+      ended: false,
     };
-    activeTask = task;
+    activeTask = round;
+    rounds.set(round.taskId, round);
+    startJudgeSpinner(ctx, round.taskId);
 
     if (config.mode === "shadow") {
       // Shadow mode records the decision without delaying or modifying the main task.
-      void runEvaluation(ctx, task, input, config);
+      void (async () => {
+        try {
+          const outcome = await runEvaluation(ctx, round, input, config);
+          showJudgeLine(ctx, round, outcome);
+        } catch {
+          // 后台评估不应作为未处理的 Promise 拒绝冒泡出来。
+        } finally {
+          stopJudgeSpinner(round.taskId);
+        }
+      })();
       return;
     }
 
-    const decision = await runEvaluation(ctx, task, input, config);
-    if (!decision || !routerConfig.enabled || routerConfig.mode !== "suggest") return;
+    let outcome: EvaluationOutcome;
+    try {
+      outcome = await runEvaluation(ctx, round, input, config);
+    } finally {
+      stopJudgeSpinner(round.taskId);
+    }
+    if (outcome.ok && routerConfig.enabled && routerConfig.mode === "suggest") {
+      const decision = outcome.decision;
+      const probabilities = ROUTES
+        .map((route) => `${route} ${Math.round(decision.probabilities[route] * 100)}%`)
+        .join(", ");
+      event.systemPromptOptions.sections.pi_jev_router = [
+        "## Jev 路由执行要求",
+        `Jev 选择策略：${decision.route}（${ROUTE_CRITERIA[decision.route]}）；策略概率：${probabilities}。`,
+        "把该路由作为本轮执行策略，而非可选建议。",
+        ROUTE_EXECUTION_INSTRUCTIONS[decision.route],
+        "遵守用户明确提出的委派与修改范围限制；若用户禁止委派，或 subagent 工具/指定 agent 不可用，明确说明无法按路由派发，不要声称已经调用。不要更改模型、思考强度、权限或远程执行设置。",
+      ].join("\n");
+    }
+    showJudgeLine(ctx, round, outcome);
+  });
 
-    const probabilities = ROUTES
-      .map((route) => `${route} ${Math.round(decision.probabilities[route] * 100)}%`)
-      .join(", ");
-    event.systemPromptOptions.sections.pi_jev_router = [
-      "## Jev 路由执行要求",
-      `Jev 选择策略：${decision.route}（${ROUTE_CRITERIA[decision.route]}）；策略概率：${probabilities}。`,
-      "把该路由作为本轮执行策略，而非可选建议。",
-      ROUTE_EXECUTION_INSTRUCTIONS[decision.route],
-      "遵守用户明确提出的委派与修改范围限制；若用户禁止委派，或 subagent 工具/指定 agent 不可用，明确说明无法按路由派发，不要声称已经调用。不要更改模型、思考强度、权限或远程执行设置。",
-    ].join("\n");
+  pi.on("message_start", (event, ctx) => {
+    if (event.message.role !== "assistant") return;
+    flushJudgeLines(ctx, false);
   });
 
   pi.on("tool_call", (event) => {
@@ -305,8 +454,11 @@ export default function (pi: ExtensionAPI) {
     });
   });
 
-  pi.on("agent_end", () => {
+  pi.on("agent_end", (_event, ctx) => {
+    if (activeTask) activeTask.ended = true;
     activeTask = undefined;
+    // 结果晚于本轮答复时补写在答复之后，而不是丢到下一条 message_start。
+    flushJudgeLines(ctx, false);
   });
 
   pi.registerCommand("jev-test", {
