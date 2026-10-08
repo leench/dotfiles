@@ -8,6 +8,7 @@ import {
   JevRequestError,
   ROUTES,
   ROUTE_CRITERIA,
+  ROUTE_EXECUTION_INSTRUCTIONS,
   type JevDecision,
   type Route,
 } from "./jev-client.ts";
@@ -206,7 +207,7 @@ export default function (pi: ExtensionAPI) {
         if (!routerConfig.enabled) activeTask = undefined;
         const message = routerConfig.enabled
           ? routerConfig.mode === "suggest"
-            ? "Jev Suggest 已启用；路由建议仅供参考，不会自动调用子代理。"
+            ? "Jev Suggest 已启用；主代理已收到按路由委派的执行要求（direct 除外）。"
             : "Jev Shadow 已启用；只记录决策，不注入建议。"
           : "Jev 路由已关闭；不会进行新的评估或注入建议。";
         ctx.ui.notify(message, "info");
@@ -269,9 +270,11 @@ export default function (pi: ExtensionAPI) {
       .map((route) => `${route} ${Math.round(decision.probabilities[route] * 100)}%`)
       .join(", ");
     event.systemPromptOptions.sections.pi_jev_router = [
-      "## Jev 可选路由建议",
-      `Jev 推荐策略：${decision.route}（${ROUTE_CRITERIA[decision.route]}）；策略概率：${probabilities}。`,
-      "此建议仅供参考，不是执行指令。遵循用户明确要求，并结合现有工作流、可用工具和你自己的判断决定是否采纳；不要仅因建议而自动调用子代理，也不要更改模型、思考强度、权限或远程执行设置。",
+      "## Jev 路由执行要求",
+      `Jev 选择策略：${decision.route}（${ROUTE_CRITERIA[decision.route]}）；策略概率：${probabilities}。`,
+      "把该路由作为本轮执行策略，而非可选建议。",
+      ROUTE_EXECUTION_INSTRUCTIONS[decision.route],
+      "遵守用户明确提出的委派与修改范围限制；若用户禁止委派，或 subagent 工具/指定 agent 不可用，明确说明无法按路由派发，不要声称已经调用。不要更改模型、思考强度、权限或远程执行设置。",
     ].join("\n");
   });
 

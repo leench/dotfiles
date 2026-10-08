@@ -8,7 +8,14 @@ export const ROUTE_CRITERIA: Record<Route, string> = {
   direct: "任务简单，主代理直接处理更高效",
   scout: "首先需要调查代码或解决不确定性",
   worker: "需求明确，适合交给 Worker 实施",
-  scout_worker: "需要先独立调查，再考虑委托 Worker 实施",
+  scout_worker: "需要先独立调查，再委托 Worker 实施",
+};
+
+export const ROUTE_EXECUTION_INSTRUCTIONS: Record<Route, string> = {
+  direct: "直接处理当前用户任务，不要调用 subagent。",
+  scout: '必须实际调用 Pi 的 subagent 工具，指定 agent: "scout"，把当前用户请求作为 task；等待侦察结果后整合结果并继续完成原始请求。不要只说会委派。',
+  worker: '必须实际调用 Pi 的 subagent 工具，指定 agent: "worker"，把当前用户请求作为 task；收到结果后审查并完成原始请求。不要只说会委派。',
+  scout_worker: '必须按顺序实际调用两次 Pi 的 subagent 工具：先指定 agent: "scout" 调查当前用户请求；收到结果后再指定 agent: "worker" 执行原始请求，并把 scout 的结论附入 worker 的 task。不要只说会委派。',
 };
 
 export interface JevDecision {

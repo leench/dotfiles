@@ -1,7 +1,7 @@
 {
   "name": "pi-jev-router",
   "version": "0.1.0",
-  "description": "Jev task-routing suggestions and manual comparison tests for Pi",
+  "description": "Jev task routing, delegation instructions, and manual comparison tests for Pi",
   "type": "module",
   "private": true,
   "engines": {
