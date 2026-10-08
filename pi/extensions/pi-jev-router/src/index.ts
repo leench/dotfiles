@@ -28,7 +28,7 @@ const DEFAULT_REPETITIONS = 3;
 const MAX_REPETITIONS = 10;
 const REQUEST_TIMEOUT_MS = 3_000;
 const STATUS_KEY = "pi-jev-router";
-const JUDGE_STATUS_KEY = "pi-jev-router-judge";
+const JUDGE_WIDGET_KEY = "pi-jev-router-judge";
 const JUDGE_ENTRY_TYPE = "jev-router-decision";
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SPINNER_INTERVAL_MS = 80;
@@ -200,14 +200,14 @@ export default function (pi: ExtensionAPI) {
     judgeSpinner = undefined;
     clearInterval(spinner.timer);
     try {
-      spinner.ctx.ui.setStatus(JUDGE_STATUS_KEY, undefined);
+      spinner.ctx.ui.setWidget(JUDGE_WIDGET_KEY, undefined);
     } catch {
-      // 会话已被替换，没有可清理的 footer。
+      // 会话已被替换，没有可清理的 widget。
     }
   }
 
   function startJudgeSpinner(ctx: ExtensionContext, taskId: string): void {
-    if (ctx.mode !== "tui") return; // 非 TUI 不逐帧刷 footer
+    if (ctx.mode !== "tui") return; // 非 TUI 不创建终端 widget
     const spinner = judgeSpinner;
     if (spinner) {
       spinner.tasks.add(taskId); // 已有动画在跑：只登记，不影响其他在途评估
@@ -218,9 +218,9 @@ export default function (pi: ExtensionAPI) {
       const glyph = SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
       frame += 1;
       try {
-        ctx.ui.setStatus(JUDGE_STATUS_KEY, `${glyph} Jev 判断中…`);
+        ctx.ui.setWidget(JUDGE_WIDGET_KEY, [`${glyph} Jev 判断中…`], { placement: "aboveEditor" });
       } catch {
-        stopJudgeSpinner(); // footer 不可用：整体停止，避免每帧重试
+        stopJudgeSpinner(); // widget 不可用：整体停止，避免每帧重试
       }
     };
     render();
