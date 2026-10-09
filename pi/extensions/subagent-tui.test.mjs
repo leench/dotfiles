@@ -137,7 +137,14 @@ function harness() {
 		registerFlag() {},
 		getFlag: () => false,
 	};
-	const theme = { fg: (_color, text) => text, bg: (_color, text) => text };
+	const colors = [];
+	const theme = {
+		fg: (color, text) => {
+			colors.push({ color, text });
+			return text;
+		},
+		bg: (_color, text) => text,
+	};
 	const ctx = {
 		hasUI: true,
 		mode: "tui",
@@ -162,7 +169,7 @@ function harness() {
 		},
 	};
 	factory(pi);
-	return { handlers, bus, widget, statuses, ctx, theme };
+	return { handlers, bus, widget, statuses, ctx, theme, colors };
 }
 function startSession(h) {
 	h.handlers.get("session_start")({ type: "session_start", reason: "startup" }, h.ctx);
@@ -287,13 +294,20 @@ const completeRun = (h, id, state = "complete") => {
 
 	const rowA = rows.find((line) => line.includes("worker"));
 	const rowB = rows.find((line) => line.includes("scout"));
-	checkTrue("rows: worker row shows its own model", rowA.includes("model model-alpha"), rowA);
-	checkTrue("rows: worker row shows its own thinking", rowA.includes("thinking high"), rowA);
-	checkTrue("rows: scout row shows its own model", rowB.includes("model model-beta"), rowB);
-	checkTrue("rows: scout row shows its own thinking", rowB.includes("thinking low"), rowB);
+	checkTrue("rows: worker row shows its own model with thinking suffix", rowA.includes("model-alpha:high"), rowA);
+	checkTrue("rows: worker row omits redundant labels", !rowA.includes("model ") && !rowA.includes("thinking"), rowA);
+	checkTrue("rows: scout row shows its own model with thinking suffix", rowB.includes("model-beta:low"), rowB);
+	startRun(h, writeRun("already-has-level", singleRun("run-level", "coder", "openai-codex/gpt-6-luna:low", "low")));
+	const withLevel = statusLines(view.render(120)).find((line) => line.includes("coder"));
+	checkTrue("rows: model id already containing thinking level is not duplicated", withLevel.includes("openai-codex/gpt-6-luna:low") && !withLevel.includes("low:low"), withLevel);
+	checkTrue("rows: async is yellow and model is white", h.colors.some(({ color, text }) => color === "warning" && text === "async") && h.colors.some(({ color, text }) => color === "text" && text === "model-alpha:high"), JSON.stringify(h.colors));
 	checkTrue("rows: no cross-contamination between subagents", !rowA.includes("model-beta") && !rowB.includes("model-alpha"), `${rowA} // ${rowB}`);
 
-	const narrow = view.render(40);
+	const narrowHarness = harness();
+	startSession(narrowHarness);
+	startRun(narrowHarness, writeRun("narrow-a", singleRun("run-narrow-a", "worker", "model-alpha", "high")));
+	startRun(narrowHarness, writeRun("narrow-b", singleRun("run-narrow-b", "scout", "model-beta", "low")));
+	const narrow = attach(narrowHarness).render(40);
 	checkTrue("rows: narrow width still renders", narrow.length > 0);
 	checkTrue("rows: narrow width truncates every line to the width", narrow.every((line) => visibleWidth(line) <= 40), `max=${Math.max(...narrow.map(visibleWidth))}`);
 	checkTrue("rows: narrow width keeps the row identity", statusLines(narrow).length === 2, JSON.stringify(statusLines(narrow)));
@@ -345,7 +359,7 @@ const completeRun = (h, id, state = "complete") => {
 	const view = attach(h);
 	const lines = view.render(120);
 	check("single: standalone subagent without parent info stays visible", statusLines(lines).length, 1);
-	checkTrue("single: its own model is shown", lines.some((line) => line.includes("model model-alone")), JSON.stringify(lines));
+	checkTrue("single: its own model is shown", lines.some((line) => line.includes("model-alone:medium")), JSON.stringify(lines));
 	check("single: header matches", headerLine(lines).includes("1 active"), true);
 
 	completeRun(h, loneId);

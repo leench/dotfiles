@@ -33,7 +33,7 @@ const STATUS_ID = "subagent-live-tail-status";
 const POLL_INTERVAL_MS = 100;
 const DISCOVERY_INTERVAL_MS = 500;
 const MIN_TAIL_LINES = 1;
-const DEFAULT_TAIL_LINES = 5;
+const DEFAULT_TAIL_LINES = 3;
 const MAX_TAIL_LINES = 32;
 const OUTPUT_LINES_PER_UPDATE = 5;
 const TOP_GAP_LINES = 1;
@@ -614,18 +614,21 @@ function runDetailLines(
 			step?.agent ?? step?.label ?? (isCurrent ? data?.agent ?? data?.agents : undefined),
 			run.label,
 		);
-		// Each row reports the model and thinking level of its own run/step, never
-		// an aggregate over the other tracked subagents.
+		// Each row reports its own model and thinking level as `provider/model:level`.
 		const model =
 			asString(step?.model) ??
 			(isCurrent ? run.model ?? asString(data?.model) : undefined);
 		const thinking =
 			asString(step?.thinking) ??
 			(isCurrent ? asString(data?.thinking) : undefined);
+		const modelLabel = model
+			? thinking && !model.endsWith(`:${thinking}`)
+				? `${model}:${thinking}`
+				: model
+			: undefined;
 		const parts = [
 			run.foreground ? "sync" : "async",
-			...(model ? [`model ${model}`] : []),
-			...(thinking ? [`thinking ${thinking}`] : []),
+			...(modelLabel ? [modelLabel] : []),
 			`up ${formatDuration(now - startedAt)}`,
 			`last ${formatDuration(idleFor)} ago`,
 		];
@@ -892,10 +895,22 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 							ROLE_COLORS[roleColors.size % ROLE_COLORS.length];
 						roleColors.set(detail.label, roleColor);
 					}
+					const asyncLabel = detail.suffix.startsWith("async · ") ? "async" : undefined;
+					const syncLabel = detail.suffix.startsWith("sync · ") ? "sync" : undefined;
+					const modePrefix = asyncLabel ? "async · " : syncLabel ? "sync · " : "";
+					const modelLabel = modePrefix
+						? detail.suffix.slice(modePrefix.length).split(" · ", 1)[0]
+						: undefined;
+					const renderedSuffix = detail.suffix
+						.replace(/^(?:async|sync) · /, "")
+						.replace(modelLabel ? `${modelLabel} · ` : "\u0000", "");
 					lines.push(
 						theme.fg(markerColor, `${detail.prefix} ${detail.marker}`) +
 							theme.fg(roleColor, ` ${detail.label}`) +
-							theme.fg("muted", ` · ${detail.suffix}`),
+							theme.fg("muted", " · ") +
+							(asyncLabel ? theme.fg("warning", asyncLabel) + theme.fg("muted", " · ") : "") +
+							(modelLabel ? theme.fg("text", modelLabel) + theme.fg("muted", " · ") : "") +
+							theme.fg("muted", renderedSuffix),
 					);
 				} else lines.push(theme.fg("muted", detail.text));
 			}
