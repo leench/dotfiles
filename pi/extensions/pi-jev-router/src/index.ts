@@ -126,6 +126,7 @@ async function runEvaluation(
       state: input.state,
       modelId: model.id,
       timeoutMs: config.timeoutMs,
+      proxyUrl: config.proxyUrl,
     });
     if (config.logging) {
       appendJsonLineQuietly(logPath, {
@@ -153,9 +154,9 @@ async function runEvaluation(
 }
 
 function summarize(tasks: { id: string }[], results: RunResult[], repetitions: number): string {
-  const totals: Record<Route, number> = { direct: 0, scout: 0, worker: 0, scout_worker: 0 };
+  const totals: Record<Route, number> = { direct: 0, scout: 0, worker: 0 };
   const lines = tasks.map((task) => {
-    const counts: Record<Route, number> = { direct: 0, scout: 0, worker: 0, scout_worker: 0 };
+    const counts: Record<Route, number> = { direct: 0, scout: 0, worker: 0 };
     for (const result of results) {
       if (result.taskId !== task.id) continue;
       counts[result.route] += 1;
@@ -349,7 +350,7 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(
         [
           `Jev 路由：${routerConfig.enabled ? `${modeStatus} 已启用` : "已关闭"}（${authStatus}）`,
-          `超时 ${routerConfig.timeoutMs} ms；最多发送 ${routerConfig.maxStateChars} 字符；日志 ${routerConfig.logging ? shadowLogPath : "关闭"}`,
+          `代理 ${routerConfig.proxyUrl ? "已配置" : "直连"}；超时 ${routerConfig.timeoutMs} ms；最多发送 ${routerConfig.maxStateChars} 字符；日志 ${routerConfig.logging ? shadowLogPath : "关闭"}`,
           ...(configError ? [configError] : []),
         ].join("\n"),
         routerConfig.enabled && apiKey ? "info" : "warning",
@@ -536,6 +537,7 @@ export default function (pi: ExtensionAPI) {
                 state: task.state,
                 modelId: model.id,
                 timeoutMs: REQUEST_TIMEOUT_MS,
+                proxyUrl: routerConfig.proxyUrl,
               });
             } catch (error) {
               const durationMs = Date.now() - startedAt;

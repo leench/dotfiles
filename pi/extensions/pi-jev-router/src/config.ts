@@ -9,6 +9,7 @@ export interface RouterConfig {
   timeoutMs: number;
   maxStateChars: number;
   logging: boolean;
+  proxyUrl: string | null;
 }
 
 export const DEFAULT_ROUTER_CONFIG: RouterConfig = {
@@ -18,6 +19,7 @@ export const DEFAULT_ROUTER_CONFIG: RouterConfig = {
   timeoutMs: 3_000,
   maxStateChars: 4_000,
   logging: true,
+  proxyUrl: null,
 };
 
 export interface LoadedRouterConfig {
@@ -64,6 +66,22 @@ export function loadRouterConfig(path: string): LoadedRouterConfig {
   const timeoutMs = value.timeoutMs === undefined ? DEFAULT_ROUTER_CONFIG.timeoutMs : value.timeoutMs;
   const maxStateChars = value.maxStateChars === undefined ? DEFAULT_ROUTER_CONFIG.maxStateChars : value.maxStateChars;
   const logging = value.logging === undefined ? DEFAULT_ROUTER_CONFIG.logging : value.logging;
+  const proxyUrl = value.proxyUrl === undefined ? DEFAULT_ROUTER_CONFIG.proxyUrl : value.proxyUrl;
+
+  let validProxyUrl = proxyUrl === null;
+  if (typeof proxyUrl === "string") {
+    try {
+      const url = new URL(proxyUrl);
+      validProxyUrl =
+        ["http:", "https:", "socks5:", "socks5h:"].includes(url.protocol) &&
+        url.hostname !== "" &&
+        (url.pathname === "" || url.pathname === "/") &&
+        !url.search &&
+        !url.hash;
+    } catch {
+      validProxyUrl = false;
+    }
+  }
 
   if (
     typeof enabled !== "boolean" ||
@@ -71,13 +89,14 @@ export function loadRouterConfig(path: string): LoadedRouterConfig {
     model !== DEFAULT_MODEL_ID ||
     typeof timeoutMs !== "number" || !Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30_000 ||
     typeof maxStateChars !== "number" || !Number.isSafeInteger(maxStateChars) || maxStateChars < 1 || maxStateChars > 4_000 ||
-    typeof logging !== "boolean"
+    typeof logging !== "boolean" ||
+    !validProxyUrl
   ) {
     return invalidConfig();
   }
 
   return {
-    config: { enabled, mode, model, timeoutMs, maxStateChars, logging },
+    config: { enabled, mode, model, timeoutMs, maxStateChars, logging, proxyUrl },
   };
 }
 

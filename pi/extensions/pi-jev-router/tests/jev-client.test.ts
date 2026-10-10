@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createProxyFetch } from "../src/proxy-fetch.ts";
 import {
   callJev,
   createRequestBody,
@@ -19,9 +20,8 @@ const validResponse = {
       choice: "scout",
       probabilities: {
         direct: 0.1,
-        scout: 0.7,
+        scout: 0.8,
         worker: 0.1,
-        scout_worker: 0.1,
       },
       confidence: 0.6,
     },
@@ -29,12 +29,22 @@ const validResponse = {
   usage: { input_tokens: 123, output_tokens: 0 },
 };
 
-test("creates a System One choice request with all four route criteria", () => {
+test("creates fetch clients for HTTP and SOCKS5 proxies", () => {
+  for (const proxyUrl of [
+    "http://127.0.0.1:7890",
+    "https://proxy.example:8443",
+    "socks5://127.0.0.1:1080",
+    "socks5h://127.0.0.1:1080",
+  ]) {
+    assert.equal(typeof createProxyFetch(proxyUrl), "function");
+  }
+});
+
+test("creates a System One choice request with the three supported routes", () => {
   const body = createRequestBody("test task");
   assert.equal(body.model, DEFAULT_MODEL_ID);
   assert.equal(body.state, "test task");
   assert.deepEqual(Object.keys(body.questions.route.criteria), [...ROUTES]);
-  assert.match(body.questions.route.criteria.scout_worker, /再委托 Worker/);
   assert.equal(body.questions.route.type, "choice");
 });
 
@@ -42,13 +52,13 @@ test("gives each route an explicit execution instruction", () => {
   assert.match(ROUTE_EXECUTION_INSTRUCTIONS.direct, /不要调用 subagent/);
   assert.match(ROUTE_EXECUTION_INSTRUCTIONS.scout, /实际调用.*subagent.*scout/s);
   assert.match(ROUTE_EXECUTION_INSTRUCTIONS.worker, /实际调用.*subagent.*worker/s);
-  assert.match(ROUTE_EXECUTION_INSTRUCTIONS.scout_worker, /按顺序.*scout.*worker/s);
+  assert.deepEqual(Object.keys(ROUTE_EXECUTION_INSTRUCTIONS), [...ROUTES]);
 });
 
 test("parses the documented choice, probabilities, confidence and usage", () => {
   assert.deepEqual(parseJevResponse(validResponse), {
     route: "scout",
-    probabilities: { direct: 0.1, scout: 0.7, worker: 0.1, scout_worker: 0.1 },
+    probabilities: { direct: 0.1, scout: 0.8, worker: 0.1 },
     confidence: 0.6,
     responseModel: "jev-1.13-free",
     inputTokens: 123,
@@ -56,11 +66,13 @@ test("parses the documented choice, probabilities, confidence and usage", () => 
   });
 });
 
-test("rejects unknown choices and malformed probability values", () => {
-  assert.throws(
-    () => parseJevResponse({ answers: { route: { ...validResponse.answers.route, choice: "planner" } } }),
-    JevRequestError,
-  );
+test("rejects unsupported choices and malformed probability values", () => {
+  for (const choice of ["planner", "scout_worker"]) {
+    assert.throws(
+      () => parseJevResponse({ answers: { route: { ...validResponse.answers.route, choice } } }),
+      JevRequestError,
+    );
+  }
   assert.throws(
     () => parseJevResponse({ answers: { route: { ...validResponse.answers.route, probabilities: { direct: 1 } } } }),
     JevRequestError,

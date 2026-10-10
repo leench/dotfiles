@@ -180,15 +180,15 @@ test("does not repeat the current prompt as the newest history turn", () => {
 });
 
 test("formats the decision line with the selected route first", () => {
-  const probabilities = { direct: 0.3, scout: 0.6712, worker: 0.01, scout_worker: 0.02 };
+  const probabilities = { direct: 0.3, scout: 0.69, worker: 0.01 };
 
   assert.equal(
     formatDecisionLine("suggest", "scout", probabilities),
-    "Jev [Suggest] scout 67% · direct 30% · worker 1% · scout_worker 2%",
+    "Jev [Suggest] scout 69% · direct 30% · worker 1%",
   );
   assert.equal(
     formatDecisionLine("shadow", "direct", probabilities),
-    "Jev [Shadow] direct 30% · scout 67% · worker 1% · scout_worker 2%",
+    "Jev [Shadow] direct 30% · scout 69% · worker 1%",
   );
 });
 

@@ -4,15 +4,25 @@ Jev task-routing and delegation for Pi. The extension uses Pi's model registry a
 
 ## Suggest mode (default)
 
-Each ordinary user prompt triggers one Jev evaluation before the main agent starts. The System One request uses the configured timeout (3000 ms by default). While the evaluation runs, a temporary spinner row (`⠋ Jev 判断中…`) appears below the conversation and above the editor, with a blank line beneath it; it disappears when the evaluation ends. On success, the extension adds Jev's selected route and probabilities to the system prompt as an execution instruction: `scout` and `worker` require an actual call to the matching `subagent`; `scout_worker` requires sequential scout and worker calls; `direct` means handle the task without a subagent. The main model still issues these tool calls, so this prompt-driven behavior cannot guarantee that the model will follow the instruction. It does not change the model, thinking level, permissions, or remote-execution settings. Missing authentication, model errors, network failures, and timeouts fail open without a route instruction.
+Each ordinary user prompt triggers one Jev evaluation before the main agent starts. The System One request uses the configured timeout (3000 ms by default). While the evaluation runs, a temporary spinner row (`⠋ Jev 判断中…`) appears below the conversation and above the editor, with a blank line beneath it; it disappears when the evaluation ends. On success, the extension adds Jev's selected route and probabilities to the system prompt as an execution instruction. The supported routes are `direct` (handle the task without a subagent), `scout` (call the scout subagent), and `worker` (call the worker subagent). The main model still issues these tool calls, so this prompt-driven behavior cannot guarantee that the model will follow the instruction. It does not change the model, thinking level, permissions, or remote-execution settings. Missing authentication, model errors, network failures, and timeouts fail open without a route instruction.
 
-Every evaluation also writes one persistent line to the current session, for example `Jev [Suggest] scout 67% · direct 30% · worker 1% · scout_worker 2%` or `Jev [Suggest] 失败：timeout`. In Suggest mode it appears after the user message is saved, before waiting for the main model's first response. The line is a custom session entry, so it stays visible in the transcript but is never sent to the LLM.
+Every evaluation also writes one persistent line to the current session, for example `Jev [Suggest] scout 69% · direct 30% · worker 1%` or `Jev [Suggest] 失败：timeout`. In Suggest mode it appears after the user message is saved, before waiting for the main model's first response. The line is a custom session entry, so it stays visible in the transcript but is never sent to the LLM.
 
 ## Shadow mode
 
 Shadow mode evaluates ordinary prompts in the background and logs the result without adding a suggestion to the prompt. Subagent runner processes marked by `PI_SUBAGENT_CHILD=1` are excluded in both modes to prevent recursive evaluations.
 
 In both modes, the prompt text Pi provides to the extension (after Pi expansion) is sent to `https://opencode.ai/zen/v1/systemone`, capped at 4000 characters by default. The request also carries up to the last three previous turns: each turn's user text plus the last assistant text of that turn. Thinking, tool calls, and tool results are never included. The current prompt comes first and wins the character budget: when the cap is hit, the oldest turns are dropped first, and the prompt itself is truncated only when it alone exceeds the limit. If the prompt includes images, Jev receives only a note that images are attached, not the image data. The prompt and history are not saved in the log. Be aware that expanded prompt text may include file contents.
+
+Set `proxyUrl` in `~/.pi/agent/jev-router.json` to route only Jev requests through an HTTP(S) or SOCKS5 proxy. For example:
+
+```json
+{
+  "proxyUrl": "socks5h://127.0.0.1:7890"
+}
+```
+
+Supported schemes are `http://`, `https://`, `socks5://`, and `socks5h://`. Existing settings without `proxyUrl` continue to use a direct connection. Proxy credentials may be included in the URL; the status display does not show the URL.
 
 Use these commands in Pi:
 
@@ -24,7 +34,7 @@ Use these commands in Pi:
 /jev-router shadow
 ```
 
-`off` persists to `~/.pi/agent/jev-router.json` and prevents new evaluations. `on` re-enables the current mode; `suggest` and `shadow` select and enable that mode. Suggest mode requires the main agent to follow the selected route and make the corresponding subagent tool call; direct means no subagent. If the configuration is malformed, Jev fails closed and remains disabled; `/jev-router on` rewrites it with valid defaults. The default configuration is enabled Suggest mode, a 3000 ms timeout, a 4000-character input limit, and JSONL logging.
+`off` persists to `~/.pi/agent/jev-router.json` and prevents new evaluations. `on` re-enables the current mode; `suggest` and `shadow` select and enable that mode. Suggest mode requires the main agent to follow the selected route and make the corresponding subagent tool call; direct means no subagent. If the configuration is malformed, Jev fails closed and remains disabled; `/jev-router on` rewrites it with valid defaults. The default configuration is enabled Suggest mode, a 3000 ms timeout, a 4000-character input limit, JSONL logging, and direct network access (`proxyUrl: null`).
 
 Live evaluation records go to `~/.pi/agent/jev-router-shadow.jsonl`. They include the mode, route, probabilities, session/task IDs, timing and token usage, but not the prompt text. `subagent_call` records note calls to the `subagent` tool and the selected agent name or workflow; they do not include the delegated task text and indicate a call attempt, not necessarily successful completion.
 

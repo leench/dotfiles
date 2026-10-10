@@ -45,6 +45,30 @@ test("fails closed when the config cannot be parsed", () => {
   assert.match(loaded.error ?? "", /Jev 路由已关闭/);
 });
 
+test("accepts HTTP and SOCKS proxy URLs", () => {
+  for (const proxyUrl of [
+    "http://127.0.0.1:7890",
+    "https://proxy.example:8443",
+    "socks5://127.0.0.1:1080",
+    "socks5h://127.0.0.1:1080",
+  ]) {
+    const path = configPath();
+    writeFileSync(path, JSON.stringify({ ...DEFAULT_ROUTER_CONFIG, proxyUrl }), "utf8");
+    assert.equal(loadRouterConfig(path).config.proxyUrl, proxyUrl);
+  }
+});
+
+test("fails closed for unsupported or malformed proxy URLs", () => {
+  for (const proxyUrl of ["ftp://proxy.example:21", "not a URL", "http://proxy.example/path"]) {
+    const path = configPath();
+    writeFileSync(path, JSON.stringify({ ...DEFAULT_ROUTER_CONFIG, proxyUrl }), "utf8");
+
+    const loaded = loadRouterConfig(path);
+    assert.equal(loaded.config.enabled, false);
+    assert.match(loaded.error ?? "", /配置无效/);
+  }
+});
+
 test("accepts the Shadow mode for explicit comparison", () => {
   const path = configPath();
   writeFileSync(path, JSON.stringify({ ...DEFAULT_ROUTER_CONFIG, mode: "shadow" }), "utf8");

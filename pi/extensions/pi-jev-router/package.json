@@ -21,6 +21,10 @@
   "scripts": {
     "test": "node --experimental-strip-types --no-warnings --test tests/*.test.ts"
   },
+  "dependencies": {
+    "https-proxy-agent": "^7.0.6",
+    "socks-proxy-agent": "^8.0.5"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
   }
