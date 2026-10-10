@@ -7,8 +7,8 @@ export const ROUTES = ["direct", "scout", "worker"] as const;
 export type Route = (typeof ROUTES)[number];
 
 export const ROUTE_CRITERIA: Record<Route, string> = {
-  direct: "任务简单，主代理直接处理更高效，或必须由主代理完成且不适合委派",
-  scout: "只读侦察：需要调查代码或解决不确定性，且不需要修改文件或执行有副作用的命令",
+  direct: "需要主代理持续参与的工作，如讨论或澄清用户需求、制定计划、审查结果；或任务简单，直接处理比委派更高效",
+  scout: "只读侦察：需要调查代码或解决不确定性，且不需要修改文件或执行有副作用的命令；简单、范围明确的侦察由主代理直接完成",
   worker: "需求明确且需要实际实施或执行命令，适合交给 Worker；包括文件修改、提交或推送等操作",
 };
 
