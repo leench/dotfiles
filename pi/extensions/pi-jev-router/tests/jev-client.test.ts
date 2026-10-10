@@ -8,6 +8,7 @@ import {
   JevRequestError,
   parseJevResponse,
   ROUTES,
+  ROUTE_CRITERIA,
   ROUTE_EXECUTION_INSTRUCTIONS,
   SYSTEMONE_ENDPOINT,
 } from "../src/jev-client.ts";
@@ -50,9 +51,16 @@ test("creates a System One choice request with the three supported routes", () =
 
 test("gives each route an explicit execution instruction", () => {
   assert.match(ROUTE_EXECUTION_INSTRUCTIONS.direct, /不要调用 subagent/);
-  assert.match(ROUTE_EXECUTION_INSTRUCTIONS.scout, /实际调用.*subagent.*scout/s);
+  assert.match(ROUTE_EXECUTION_INSTRUCTIONS.scout, /只读调查/);
+  assert.match(ROUTE_EXECUTION_INSTRUCTIONS.scout, /不得修改文件、提交、推送/);
   assert.match(ROUTE_EXECUTION_INSTRUCTIONS.worker, /实际调用.*subagent.*worker/s);
   assert.deepEqual(Object.keys(ROUTE_EXECUTION_INSTRUCTIONS), [...ROUTES]);
+});
+
+test("routes side-effecting implementation and git operations away from scout", () => {
+  assert.match(ROUTE_CRITERIA.scout, /只读侦察/);
+  assert.match(ROUTE_CRITERIA.scout, /不需要修改文件或执行有副作用的命令/);
+  assert.match(ROUTE_CRITERIA.worker, /文件修改、提交或推送/);
 });
 
 test("parses the documented choice, probabilities, confidence and usage", () => {
