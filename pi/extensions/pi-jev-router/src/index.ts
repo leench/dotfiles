@@ -29,6 +29,7 @@ const MAX_REPETITIONS = 10;
 const REQUEST_TIMEOUT_MS = 3_000;
 const STATUS_KEY = "pi-jev-router";
 const JUDGE_WIDGET_KEY = "pi-jev-router-judge";
+const LEGACY_JUDGE_RESULT_WIDGET_KEY = "pi-jev-router-result";
 const JUDGE_ENTRY_TYPE = "jev-router-decision";
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SPINNER_INTERVAL_MS = 80;
@@ -207,6 +208,15 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  function clearLegacyJudgeResultWidget(ctx: ExtensionContext): void {
+    if (ctx.mode !== "tui") return;
+    try {
+      ctx.ui.setWidget(LEGACY_JUDGE_RESULT_WIDGET_KEY, undefined);
+    } catch {
+      // 会话 UI 已关闭时无需清理。
+    }
+  }
+
   function startJudgeSpinner(ctx: ExtensionContext, taskId: string): void {
     if (ctx.mode !== "tui") return; // 非 TUI 不创建终端 widget
     const spinner = judgeSpinner;
@@ -229,58 +239,54 @@ export default function (pi: ExtensionAPI) {
     judgeSpinner = { ctx, timer: setInterval(render, SPINNER_INTERVAL_MS), tasks: new Set([taskId]) };
   }
 
-  function appendJudgeLine(line: string): void {
+  function appendJudgeLine(line: string): boolean {
     try {
       pi.appendEntry(JUDGE_ENTRY_TYPE, { text: line });
+      return true;
     } catch {
-      // 扩展运行时已卸载（reload 或切换会话），结果只保留在 JSONL 日志里。
+      // 保留 pending 结果，后续生命周期节点会重试写入。
+      return false;
     }
   }
 
-  /** 结果行现在能否安全追加：本轮已结束，或本轮提问已经是 branch 末尾。 */
-  function canAppendJudgeLine(ctx: ExtensionContext, round: JudgeRound): boolean {
-    return round.ended || promptEntryLanded(ctx, round.prompt, round.leafIdAtStart);
+  /** 本轮 user 条目是否已落盘：文本匹配当前 prompt；图片归一化可能在末尾附加提示。 */
+  function promptEntryLanded(ctx: ExtensionContext, round: JudgeRound): boolean {
+    const branch = ctx.sessionManager.getBranch();
+    const leaf = branch[branch.length - 1];
+    if (!leaf || leaf.type !== "message" || leaf.id === round.leafIdAtStart) return false;
+    if (leaf.message.role !== "user") return false;
+    const text = messageText(leaf.message);
+    return text === round.prompt || text.startsWith(`${round.prompt}\n\n`);
   }
 
   /**
-   * 追加 pending 结果行。all=true 时无条件追加（新一轮开始前，新 prompt 尚未落盘，
-   * 追加位置就是上一轮末尾）；否则只追加已经可以落位的行。会话更换后的行直接丢弃。
+   * 尽快把结果追加到本轮用户消息之后；未落盘时暂存，追加失败则保留并在后续节点重试。
+   * all=true 用于下一轮开始前补写上一轮遗留的 pending 结果。
    */
   function flushJudgeLines(ctx: ExtensionContext, all: boolean): void {
     for (const round of rounds.values()) {
       const line = round.pendingLine;
       if (line === undefined) continue;
       const stale = round.generation !== sessionGeneration;
-      if (!stale && !all && !canAppendJudgeLine(ctx, round)) continue;
+      if (!stale && !all && !round.ended && !promptEntryLanded(ctx, round)) continue;
+      if (stale) {
+        round.pendingLine = undefined;
+        rounds.delete(round.taskId);
+        continue;
+      }
+      if (!appendJudgeLine(line)) continue;
       round.pendingLine = undefined;
       rounds.delete(round.taskId);
-      if (!stale) appendJudgeLine(line);
     }
   }
 
-  /** 本轮 user 条目是否已经落盘：文本匹配当前 prompt；图片归一化可能只在末尾附加提示。 */
-  function promptEntryLanded(ctx: ExtensionContext, prompt: string, leafIdAtStart: string | null): boolean {
-    const branch = ctx.sessionManager.getBranch();
-    const leaf = branch[branch.length - 1];
-    if (!leaf || leaf.type !== "message" || leaf.id === leafIdAtStart) return false;
-    if (leaf.message.role !== "user") return false;
-    const text = messageText(leaf.message);
-    return text === prompt || text.startsWith(`${prompt}\n\n`);
-  }
-
-  /** 结果行落位；本轮提问尚未落盘时挂起，只有会话更换才丢弃。 */
+  /** 结果行落位：prompt 已保存时立即追加，否则挂起等待安全时机。 */
   function showJudgeLine(ctx: ExtensionContext, round: JudgeRound, outcome: EvaluationOutcome): void {
     if (round.generation !== sessionGeneration) return; // 会话已更换：不写入旧会话或新会话
-    const line = outcome.ok
-      ? formatDecisionLine(round.mode, outcome.decision.route, outcome.decision.probabilities)
+    round.pendingLine = outcome.ok
+      ? formatDecisionLine(round.mode, outcome.decision.probabilities)
       : formatFailureLine(round.mode, outcome.code);
-
-    if (canAppendJudgeLine(ctx, round)) {
-      rounds.delete(round.taskId);
-      appendJudgeLine(line);
-      return;
-    }
-    round.pendingLine = line;
+    flushJudgeLines(ctx, false);
   }
 
   pi.registerEntryRenderer<{ text: string }>(JUDGE_ENTRY_TYPE, (entry, _options, theme) => {
@@ -294,12 +300,14 @@ export default function (pi: ExtensionAPI) {
     sessionGeneration += 1;
     rounds.clear();
     stopJudgeSpinner();
+    clearLegacyJudgeResultWidget(ctx);
     if (configError && ctx.hasUI) ctx.ui.notify(configError, "warning");
   });
 
-  pi.on("session_shutdown", () => {
+  pi.on("session_shutdown", (_event, ctx) => {
     sessionGeneration += 1; // 在途结果作废：不再写入旧会话或之后的新会话
     stopJudgeSpinner();
+    clearLegacyJudgeResultWidget(ctx);
     activeTask = undefined;
     rounds.clear();
   });
@@ -360,7 +368,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event, ctx) => {
     delete event.systemPromptOptions.sections.pi_jev_router;
-    flushJudgeLines(ctx, true); // 旧轮次未落盘的结果行先补写
+    flushJudgeLines(ctx, true); // 旧轮次未成功落盘的结果行先补写
     if (!routerConfig.enabled || process.env[SUBAGENT_CHILD_ENV] === "1") {
       activeTask = undefined;
       return;
@@ -428,8 +436,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("message_end", (event, ctx) => {
     if (event.message.role !== "user") return;
-    // This extension hook runs before SessionManager persists the user entry.
-    // Defer one event-loop turn so the result is appended after the prompt, before model latency.
+    // This hook runs before SessionManager persists the user entry; defer one turn to retry.
     setTimeout(() => flushJudgeLines(ctx, false), 0);
   });
 
@@ -468,7 +475,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("agent_end", (_event, ctx) => {
     if (activeTask) activeTask.ended = true;
     activeTask = undefined;
-    // 结果晚于本轮答复时补写在答复之后，而不是丢到下一条 message_start。
+    // 作为最后一次重试；appendEntry 仍失败时，下一轮开始前继续补写。
     flushJudgeLines(ctx, false);
   });
 

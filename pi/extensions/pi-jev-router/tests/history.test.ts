@@ -179,16 +179,16 @@ test("does not repeat the current prompt as the newest history turn", () => {
   assert.ok(!input.state.includes("这是重放的旧答复"));
 });
 
-test("formats the decision line with the selected route first", () => {
-  const probabilities = { direct: 0.3, scout: 0.69, worker: 0.01 };
+test("formats the decision line in descending probability order", () => {
+  const probabilities = { direct: 0.77, scout: 0.03, worker: 0.2 };
 
   assert.equal(
-    formatDecisionLine("suggest", "scout", probabilities),
-    "Jev [Suggest] scout 69% · direct 30% · worker 1%",
+    formatDecisionLine("suggest", probabilities),
+    "Jev [Suggest] direct 77% · worker 20% · scout 3%",
   );
   assert.equal(
-    formatDecisionLine("shadow", "direct", probabilities),
-    "Jev [Shadow] direct 30% · scout 69% · worker 1%",
+    formatDecisionLine("shadow", probabilities),
+    "Jev [Shadow] direct 77% · worker 20% · scout 3%",
   );
 });
 

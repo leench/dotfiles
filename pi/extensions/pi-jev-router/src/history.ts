@@ -130,13 +130,12 @@ function modeLabel(mode: "suggest" | "shadow"): string {
   return mode === "suggest" ? "Suggest" : "Shadow";
 }
 
-/** 成功行：先显示选中的 route，其余按 ROUTES 顺序。 */
+/** 成功行：按概率从高到低显示 route，相同概率保持 ROUTES 顺序。 */
 export function formatDecisionLine(
   mode: "suggest" | "shadow",
-  route: Route,
   probabilities: Record<Route, number>,
 ): string {
-  const ordered = [route, ...ROUTES.filter((candidate) => candidate !== route)];
+  const ordered = [...ROUTES].sort((left, right) => probabilities[right] - probabilities[left]);
   const parts = ordered.map((candidate) => `${candidate} ${Math.round(probabilities[candidate] * 100)}%`);
   return `Jev [${modeLabel(mode)}] ${parts.join(" · ")}`;
 }
