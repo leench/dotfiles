@@ -14,8 +14,8 @@ export const ROUTE_CRITERIA: Record<Route, string> = {
 
 export const ROUTE_EXECUTION_INSTRUCTIONS: Record<Route, string> = {
   direct: "直接处理当前用户任务，不要调用 subagent。",
-  scout: '必须实际调用 Pi 的 subagent 工具，指定 agent: "scout"，只委派只读调查；scout 不得修改文件、提交、推送或执行有副作用的操作。等待侦察结果后，由主代理继续完成原始请求中需要执行的部分。不要只说会委派。',
-  worker: '必须实际调用 Pi 的 subagent 工具，指定 agent: "worker"，把需要实施或执行的当前用户请求作为 task；收到结果后审查并确认任务完成。不要只说会委派。',
+  scout: '必须实际调用 Pi 的 subagent 工具，指定 agent: "scout"，显式设置 async: true，只委派只读调查；scout 不得修改文件、提交、推送或执行有副作用的操作。启动后立即交还控制权，不要同步等待或调用 subagent_wait；异步结果返回后再整合，并由主代理继续完成原始请求中需要执行的部分。只有用户明确要求前台执行或等待结果时才使用 async: false。不要在结果返回前声称任务已完成，也不要只说会委派。',
+  worker: '必须实际调用 Pi 的 subagent 工具，指定 agent: "worker"，显式设置 async: true，把需要实施或执行的当前用户请求作为 task。启动后立即交还控制权，不要同步等待或调用 subagent_wait；异步结果返回后审查并继续完成任务。只有用户明确要求前台执行或等待结果时才使用 async: false。不要在结果返回前声称任务已完成，也不要只说会委派。',
 };
 
 export interface JevDecision {

@@ -53,6 +53,12 @@ test("gives each route an explicit execution instruction", () => {
   assert.match(ROUTE_EXECUTION_INSTRUCTIONS.direct, /不要调用 subagent/);
   assert.match(ROUTE_EXECUTION_INSTRUCTIONS.scout, /只读调查/);
   assert.match(ROUTE_EXECUTION_INSTRUCTIONS.scout, /不得修改文件、提交、推送/);
+  for (const route of ["scout", "worker"] as const) {
+    assert.match(ROUTE_EXECUTION_INSTRUCTIONS[route], /显式设置 async: true/);
+    assert.match(ROUTE_EXECUTION_INSTRUCTIONS[route], /不要同步等待或调用 subagent_wait/);
+    assert.match(ROUTE_EXECUTION_INSTRUCTIONS[route], /用户明确要求前台执行或等待结果时才使用 async: false/);
+    assert.match(ROUTE_EXECUTION_INSTRUCTIONS[route], /不要在结果返回前声称任务已完成/);
+  }
   assert.match(ROUTE_EXECUTION_INSTRUCTIONS.worker, /实际调用.*subagent.*worker/s);
   assert.deepEqual(Object.keys(ROUTE_EXECUTION_INSTRUCTIONS), [...ROUTES]);
 });
