@@ -287,6 +287,7 @@ spawn-at-startup "vicinae" "server"
 // DMS owns org.freedesktop.Notifications; do not start mako alongside it.
 // spawn-at-startup "mako"
 spawn-at-startup "mpd"
+spawn-at-startup "/home/niri/.local/bin/niri-overview-wallpaper-watch"
 // spawn-at-startup "/home/niri/.local/bin/random_wallpaper.sh"
 // spawn-at-startup "env" "LC_ALL=en_US.UTF-8" "waybar"
 // spawn-at-startup "sh" "-c" "export LANG=zh_CN.UTF-8; dms"
@@ -503,6 +504,11 @@ layer-rule {
     place-within-backdrop true
 }
 
+layer-rule {
+    match namespace="^awww-daemon$"
+    place-within-backdrop true
+}
+
 binds {
     // Keys consist of modifiers separated by + signs, followed by an XKB key name
     // in the end. To find an XKB name for a particular key, you may use a program
@@ -529,7 +535,7 @@ binds {
     Mod+Alt+B hotkey-overlay-title="Bluetooth: bluetui" { spawn "env" "LC_ALL=en_US.UTF-8" "kitty" "--title" "bluetui" "sh" "-c" "bluetui || (echo 'Bluetui exited with error. Press Enter...'; read)"; }
     Mod+Alt+M hotkey-overlay-title="Music: rmpc" { spawn "env" "LC_ALL=en_US.UTF-8" "kitty" "--title" "rmpc" "-o" "font_size=9" "-o" "background_opacity=0.7" "-o" "window_padding_width=0" "-o" "hide_window_decorations=yes" "-o" "tab_bar_style=hidden" "-o" "tab_bar_min_tabs=2" "rmpc"; }
 
-    Super+Alt+L hotkey-overlay-title="Lock the Screen: swaylock" { spawn "swaylock"; }
+    Super+Alt+L hotkey-overlay-title="Lock the Screen: Qylock (random)" { spawn "/home/niri/.local/bin/qylock-random"; }
 
     // Use spawn-sh to run a shell command. Do this if you need pipes, multiple commands, etc.
     // Note: the entire command goes as a single argument. It's passed verbatim to `sh -c`.
