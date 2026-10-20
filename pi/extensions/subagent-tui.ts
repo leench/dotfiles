@@ -30,8 +30,12 @@ import * as path from "node:path";
 
 const WIDGET_ID = "subagent-live-tail";
 const STATUS_ID = "subagent-live-tail-status";
-const POLL_INTERVAL_MS = 100;
-const DISCOVERY_INTERVAL_MS = 500;
+const POLL_INTERVAL_MS = 200;
+const FOREGROUND_REFRESH_INTERVAL_MS = 1_000;
+const DISCOVERY_INTERVAL_MS = 10_000;
+const DISCOVERY_CACHE_LIMIT = 512;
+const DISCOVERY_RETRY_BASE_MS = 5_000;
+const DISCOVERY_RETRY_MAX_MS = 60_000;
 const MIN_TAIL_LINES = 1;
 const DEFAULT_TAIL_LINES = 3;
 const MAX_TAIL_LINES = 32;
@@ -81,6 +85,7 @@ type StepSnapshot = {
 	tool?: string;
 	output: string[];
 	latest?: AsyncStep;
+	sessionUsage?: TokenUsage;
 };
 
 type AsyncStep = {
@@ -152,8 +157,21 @@ type TrackedRun = {
 	startedAt: number;
 	finishedAt?: number;
 	terminalLogged: boolean;
+	status?: AsyncStatus;
+	statusFingerprint?: string;
+	pidAlive?: boolean;
+	sessionUsage?: TokenUsage;
+	sessionUsageCheckedAt?: number;
 	stepSnapshots: Map<string, StepSnapshot>;
 	sessionTokenSnapshots: Map<string, SessionTokenSnapshot>;
+};
+
+type DiscoverySnapshot = {
+	mtimeMs?: number;
+	size?: number;
+	status?: AsyncStatus;
+	failures: number;
+	retryAt: number;
 };
 
 type ThemeColor =
@@ -562,7 +580,6 @@ function runDetailLines(
 	const currentIndex = asFiniteNumber(data?.currentStep);
 	const runStartedAt = asFiniteNumber(data?.startedAt) ?? run.startedAt;
 	const mode = asString(data?.mode);
-	const pidState = processAlive(data?.pid);
 	const lines: DetailLine[] = [];
 
 	for (const candidate of displayCandidates) {
@@ -603,8 +620,8 @@ function runDetailLines(
 			prefix = "!";
 			marker = "ATTN";
 		} else if (canStall && idleFor >= STALL_CRITICAL_MS) {
-			prefix = pidState === false ? "x" : "!";
-			marker = pidState === false ? "DEAD" : "STALLED";
+			prefix = run.pidAlive === false ? "x" : "!";
+			marker = run.pidAlive === false ? "DEAD" : "STALLED";
 		} else if (canStall && idleFor >= STALL_WARNING_MS) {
 			prefix = "~";
 			marker = "IDLE";
@@ -640,13 +657,14 @@ function runDetailLines(
 		if (toolCount !== undefined) parts.push(`tools ${toolCount}`);
 		const turnCount = asFiniteNumber(step?.turnCount ?? (isCurrent ? data?.turnCount : undefined));
 		if (turnCount !== undefined) parts.push(`turns ${turnCount}`);
-		const sessionFile = step?.sessionFile ?? (isCurrent ? data?.sessionFile : undefined);
+		const stepSnapshot = run.stepSnapshots.get(`step:${candidate.index}`);
 		const usage =
 			tokenUsage(step?.tokens ?? step?.totalTokens ?? step?.usage) ??
 			(isCurrent
 				? tokenUsage(data?.totalTokens ?? data?.tokens ?? data?.usage ?? data?.n)
 				: undefined) ??
-			readSessionUsage(run, sessionFile, startedAt);
+			stepSnapshot?.sessionUsage ??
+			(isCurrent ? run.sessionUsage : undefined);
 		if (usage) parts.push(formatTokenUsage(usage));
 		const elapsedMs = now - startedAt;
 		if (usage && usage.output > 0 && elapsedMs >= 1_000)
@@ -682,7 +700,7 @@ function runDetailLines(
 		const output = step ? latestOutput(undefined, [step]) : latestOutput(status, []);
 		if (output) lines.push({ kind: "text", text: `  output: ${output}` });
 		if (canStall && idleFor >= STALL_WARNING_MS) {
-			const processHint = pidState === false ? "; process not found" : "";
+			const processHint = run.pidAlive === false ? "; process not found" : "";
 			lines.push({
 				kind: "text",
 				text: `  no child progress for ${formatDuration(idleFor)}${processHint}`,
@@ -764,18 +782,23 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 	// Injected by the widget factory; cleared when the widget is removed so a
 	// replaced session can never be rendered through a stale TUI object.
 	let widgetTui: TUI | undefined;
-	let timer: ReturnType<typeof setTimeout> | undefined;
+	let pollTimer: ReturnType<typeof setTimeout> | undefined;
+	let discoveryTimer: ReturnType<typeof setTimeout> | undefined;
 	let widgetInstalled = false;
-	let lastDiscoveryAt = 0;
+	let lastRenderAt = 0;
+	let lastStatusText: string | undefined;
 	let visible = true;
 	let paused = false;
 	let tailLines = DEFAULT_TAIL_LINES;
 	let logs: LogEntry[] = [];
 	const runs = new Map<string, TrackedRun>();
+	const discoveryCache = new Map<string, DiscoverySnapshot>();
 
 	function requestRender(): void {
 		try {
-			widgetTui?.requestRender();
+			if (!widgetTui) return;
+			widgetTui.requestRender();
+			lastRenderAt = Date.now();
 		} catch {
 			// A replaced session can invalidate the TUI; the next widget install repairs it.
 		}
@@ -795,16 +818,13 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 
 	function activeRuns(): TrackedRun[] {
 		return [...runs.values()].filter(
-			(run) =>
-				!terminalState(run.state) &&
-				!isWorkflowRecord(run.asyncDir ? readStatus(run.asyncDir) : undefined),
+			(run) => !terminalState(run.state) && !isWorkflowRecord(run.status),
 		);
 	}
 
 	function activeChildCount(active: TrackedRun[]): number {
 		return active.reduce((count, run) => {
-			const status = run.asyncDir ? readStatus(run.asyncDir) : undefined;
-			const steps = observedSteps(run, status);
+			const steps = observedSteps(run, run.status);
 			const runningSteps = steps.filter((step) => {
 				const state = asString(step.status);
 				return (
@@ -822,15 +842,17 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		if (!currentCtx?.hasUI || currentCtx.mode !== "tui") return;
 		const active = activeRuns();
 		const childCount = activeChildCount(active);
-		if (childCount === 0) {
-			currentCtx.ui.setStatus(STATUS_ID, undefined);
-			return;
+		let text: string | undefined;
+		if (childCount > 0) {
+			let suffix = "";
+			if (paused) suffix = " paused";
+			else if (!visible) suffix = " off";
+			const plural = childCount === 1 ? "" : "s";
+			text = `${childCount} subagent${plural}${suffix}`;
 		}
-		let suffix = "";
-		if (paused) suffix = " paused";
-		else if (!visible) suffix = " off";
-		const plural = childCount === 1 ? "" : "s";
-		currentCtx.ui.setStatus(STATUS_ID, `${childCount} subagent${plural}${suffix}`);
+		if (text === lastStatusText) return;
+		lastStatusText = text;
+		currentCtx.ui.setStatus(STATUS_ID, text);
 	}
 
 	function renderPanel(width: number, theme: ThemeLike): string[] {
@@ -840,7 +862,7 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 
 		const activeStatuses = active.map((run) => ({
 			run,
-			status: run.asyncDir ? readStatus(run.asyncDir) : undefined,
+			status: run.status,
 		}));
 		const activeChildTotal = activeChildCount(active);
 		const roles = [
@@ -971,7 +993,6 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 			widgetInstalled = true;
 		}
 		updateStatus();
-		requestRender();
 	}
 
 	function removeWidget(ctx: ExtensionContext): void {
@@ -1018,6 +1039,11 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		const existing = runs.get(id);
 		if (existing) {
 			existing.asyncDir = asyncDir;
+			if (existing.state === "paused") {
+				existing.state = "running";
+				existing.finishedAt = undefined;
+				existing.terminalLogged = false;
+			}
 			return;
 		}
 		const agent = formatAgent(data?.agent ?? data?.agents, "subagent");
@@ -1048,6 +1074,10 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		run.finishedAt = Date.now();
 		const state = asString(data?.state) ?? asString(data?.status) ?? "complete";
 		run.state = state;
+		run.status = { ...(asObject(run.status) ?? {}), state } as AsyncStatus;
+		run.statusFingerprint = statusFingerprint(run.status);
+		if (run.asyncDir && currentCtx?.hasUI && currentCtx.mode === "tui")
+			cacheDiscoveryStatus(run.asyncDir, run.status);
 		if (!run.terminalLogged) {
 			appendLog(
 				`${state} ${run.label} [${id}]`,
@@ -1056,6 +1086,7 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 			run.terminalLogged = true;
 		}
 		refreshUi();
+		schedulePoll();
 	}
 
 	function appendNewOutput(
@@ -1109,8 +1140,15 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		const data = asObject(status);
 		if (!data) return false;
 		const nextState = asString(data.state) ?? run.state;
-		const changed = nextState !== run.state;
+		const previousState = run.state;
+		const changed = nextState !== previousState;
+		if (terminalState(previousState) && !terminalState(nextState)) {
+			run.finishedAt = undefined;
+			run.terminalLogged = false;
+		}
 		run.state = nextState;
+		run.status = status;
+		run.pidAlive = processAlive(data.pid);
 		for (const [index, rawStep] of asArray(data.steps).entries()) {
 			const step = asObject(rawStep) as AsyncStep | undefined;
 			if (step) updateStep(run, step, index);
@@ -1126,44 +1164,251 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		return changed;
 	}
 
-	function pollRuns(): void {
-		const now = Date.now();
-		if (currentCtx && now - lastDiscoveryAt >= DISCOVERY_INTERVAL_MS) {
-			discoverExistingRuns(currentCtx);
-			lastDiscoveryAt = now;
-			installWidget(currentCtx);
+	function statusFingerprint(status: AsyncStatus): string {
+		const data = { ...((asObject(status) ?? {}) as Record<string, unknown>) };
+		delete data.lastUpdate;
+		return JSON.stringify(data) ?? "";
+	}
+
+	function setDiscoverySnapshot(asyncDir: string, snapshot: DiscoverySnapshot): void {
+		discoveryCache.delete(asyncDir);
+		discoveryCache.set(asyncDir, snapshot);
+		while (discoveryCache.size > DISCOVERY_CACHE_LIMIT) {
+			const oldest = discoveryCache.keys().next().value as string | undefined;
+			if (!oldest) break;
+			discoveryCache.delete(oldest);
 		}
-		if (!paused) {
-			for (const run of runs.values()) {
-				if (!run.asyncDir) continue;
-				const status = readStatus(run.asyncDir);
-				if (status) updateAsyncRun(run, status);
+	}
+
+	function cacheDiscoveryStatus(
+		asyncDir: string,
+		status: AsyncStatus | undefined,
+		mtimeMs?: number,
+		size?: number,
+		failures = 0,
+	): void {
+		if (mtimeMs === undefined && size === undefined) {
+			try {
+				const stat = fs.statSync(path.join(asyncDir, "status.json"));
+				mtimeMs = stat.mtimeMs;
+				size = stat.size;
+			} catch {
+				return;
 			}
 		}
-		const cutoff = now - TERMINAL_RETENTION_MS;
+		setDiscoverySnapshot(asyncDir, {
+			mtimeMs,
+			size,
+			status,
+			failures,
+			retryAt: 0,
+		});
+	}
+
+	function readDiscoveredStatus(asyncDir: string, now: number): AsyncStatus | undefined {
+		const cached = discoveryCache.get(asyncDir);
+		let stat: fs.Stats;
+		try {
+			stat = fs.statSync(path.join(asyncDir, "status.json"));
+		} catch {
+			if (cached && now < cached.retryAt) return undefined;
+			const failures = (cached?.failures ?? 0) + 1;
+			const delay = Math.min(
+				DISCOVERY_RETRY_MAX_MS,
+				DISCOVERY_RETRY_BASE_MS * 2 ** Math.min(failures - 1, 4),
+			);
+			setDiscoverySnapshot(asyncDir, {
+				failures,
+				retryAt: now + delay,
+			});
+			return undefined;
+		}
+
+		const unchanged =
+			cached?.mtimeMs === stat.mtimeMs && cached.size === stat.size;
+		if (unchanged && cached.status) return cached.status;
+		if (unchanged && cached && now < cached.retryAt) return undefined;
+
+		const status = readStatus(asyncDir);
+		const failures = status ? 0 : unchanged && cached ? cached.failures + 1 : 1;
+		const delay = status
+			? 0
+			: Math.min(
+					DISCOVERY_RETRY_MAX_MS,
+					DISCOVERY_RETRY_BASE_MS * 2 ** Math.min(failures - 1, 4),
+				);
+		cacheDiscoveryStatus(asyncDir, status, stat.mtimeMs, stat.size, failures);
+		const updated = discoveryCache.get(asyncDir);
+		if (updated) updated.retryAt = now + delay;
+		return status;
+	}
+
+	function refreshSessionUsages(run: TrackedRun, status = run.status): void {
+		const now = Date.now();
+		if (
+			run.sessionUsageCheckedAt !== undefined &&
+			now - run.sessionUsageCheckedAt < 1_000
+		)
+			return;
+		run.sessionUsageCheckedAt = now;
+		const data = asObject(status);
+		const currentIndex = asFiniteNumber(data?.currentStep);
+		const fileUsages = new Map<string, TokenUsage | undefined>();
+		const readUsage = (fileValue: unknown, startedAt: number): TokenUsage | undefined => {
+			const file = safeSessionFile(fileValue);
+			if (!file) return undefined;
+			if (!fileUsages.has(file))
+				fileUsages.set(file, readSessionUsage(run, file, startedAt));
+			return fileUsages.get(file);
+		};
+
+		run.sessionUsage = undefined;
+		for (const [key, snapshot] of run.stepSnapshots) {
+			const step = snapshot.latest;
+			if (!step) continue;
+			const index = Number(key.slice("step:".length));
+			const directUsage = tokenUsage(step.tokens ?? step.totalTokens ?? step.usage);
+			snapshot.sessionUsage = directUsage
+				? undefined
+				: readUsage(
+						step.sessionFile ??
+							(index === currentIndex ? data?.sessionFile : undefined),
+						asFiniteNumber(step.startedAt) ??
+							(index === currentIndex
+								? asFiniteNumber(data?.startedAt)
+								: undefined) ??
+							run.startedAt,
+					);
+		}
+		if (run.stepSnapshots.size === 0 || currentIndex === undefined)
+			run.sessionUsage = readUsage(
+				data?.sessionFile,
+				asFiniteNumber(data?.startedAt) ?? run.startedAt,
+			);
+	}
+
+	function pollRuns(includePaused = false): void {
+		if (paused) return;
+		const now = Date.now();
+		let changed = false;
+		for (const run of runs.values()) {
+			if (
+				!run.asyncDir ||
+				(terminalState(run.state) && !(includePaused && run.state === "paused")) ||
+				isWorkflowRecord(run.status)
+			)
+				continue;
+			const status = readStatus(run.asyncDir);
+			if (!status) continue;
+			const fingerprint = statusFingerprint(status);
+			const previousFingerprint = run.statusFingerprint;
+			const previousState = run.state;
+			run.statusFingerprint = fingerprint;
+			const stateChanged = updateAsyncRun(run, status);
+			if (fingerprint !== previousFingerprint || stateChanged) changed = true;
+			// updateAsyncRun may set a terminal state; preserve that snapshot in the
+			// discovery cache so a later scan cannot resurrect a stale running record.
+			if (!terminalState(previousState) && terminalState(run.state))
+				cacheDiscoveryStatus(run.asyncDir, status);
+		}
+		for (const run of runs.values()) {
+			if (!terminalState(run.state) && !isWorkflowRecord(run.status))
+				refreshSessionUsages(run);
+		}
+
 		for (const [id, run] of runs) {
-			if (terminalState(run.state) && (run.finishedAt ?? 0) < cutoff)
+			if (
+				run.state !== "paused" &&
+				terminalState(run.state) &&
+				(run.finishedAt ?? 0) + TERMINAL_RETENTION_MS <= now
+			) {
 				runs.delete(id);
+				changed = true;
+			}
 		}
-		if (activeRuns().length === 0) refreshUi();
-		else {
-			updateStatus();
-			requestRender();
+		updateStatus();
+		if (changed || (activeRuns().length > 0 && now - lastRenderAt >= 1_000))
+			refreshUi();
+	}
+
+	function nextPollDelay(now: number): number | undefined {
+		if (!currentCtx?.hasUI || currentCtx.mode !== "tui" || paused) return undefined;
+		let hasAsync = false;
+		let hasForeground = false;
+		let nextCleanup = Number.POSITIVE_INFINITY;
+		for (const run of runs.values()) {
+			if (run.asyncDir) {
+				if (
+					run.state !== "paused" &&
+					!terminalState(run.state) &&
+					!isWorkflowRecord(run.status)
+				)
+					hasAsync = true;
+			} else if (!terminalState(run.state)) hasForeground = true;
+			if (
+				run.state !== "paused" &&
+				terminalState(run.state) &&
+				run.finishedAt !== undefined
+			)
+				nextCleanup = Math.min(
+					nextCleanup,
+					run.finishedAt + TERMINAL_RETENTION_MS,
+				);
 		}
+		if (hasAsync) return POLL_INTERVAL_MS;
+		if (hasForeground) return FOREGROUND_REFRESH_INTERVAL_MS;
+		return Number.isFinite(nextCleanup) ? Math.max(1, nextCleanup - now) : undefined;
 	}
 
 	function schedulePoll(): void {
-		if (!currentCtx?.hasUI || currentCtx.mode !== "tui") return;
-		if (timer) clearTimeout(timer);
-		timer = setTimeout(() => {
-			timer = undefined;
+		if (pollTimer) clearTimeout(pollTimer);
+		pollTimer = undefined;
+		const delay = nextPollDelay(Date.now());
+		if (delay === undefined) return;
+		pollTimer = setTimeout(() => {
+			pollTimer = undefined;
 			pollRuns();
 			schedulePoll();
-		}, POLL_INTERVAL_MS);
-		timer.unref?.();
+		}, delay);
+		pollTimer.unref?.();
 	}
 
-	function discoverExistingRuns(ctx: ExtensionContext): void {
+	function stopPollTimer(): void {
+		if (pollTimer) clearTimeout(pollTimer);
+		pollTimer = undefined;
+	}
+
+	function stopDiscoveryTimer(): void {
+		if (discoveryTimer) clearTimeout(discoveryTimer);
+		discoveryTimer = undefined;
+	}
+
+	function clearTimers(): void {
+		stopPollTimer();
+		stopDiscoveryTimer();
+	}
+
+	function scheduleDiscovery(): void {
+		stopDiscoveryTimer();
+		if (!currentCtx?.hasUI || currentCtx.mode !== "tui" || paused) return;
+		discoveryTimer = setTimeout(() => {
+			discoveryTimer = undefined;
+			const ctx = currentCtx;
+			if (!ctx || paused) return;
+			const changed = discoverExistingRuns(ctx);
+			if (changed) refreshUi();
+			schedulePoll();
+			scheduleDiscovery();
+		}, DISCOVERY_INTERVAL_MS);
+		discoveryTimer.unref?.();
+	}
+
+	function discoverExistingRuns(
+		ctx: ExtensionContext,
+		skipTracked = false,
+	): boolean {
+		let changed = false;
+		let scannedRuns = 0;
 		const sessionId = (() => {
 			try {
 				return ctx.sessionManager.getSessionFile() ?? ctx.sessionManager.getSessionId();
@@ -1187,10 +1432,30 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 				for (const entry of entries) {
 					if (!entry.isDirectory()) continue;
 					const asyncDir = path.join(root, entry.name);
-					const status = readStatus(asyncDir);
+					const tracked = [...runs.values()].find(
+						(run) => run.asyncDir === asyncDir,
+					);
+					if (skipTracked && tracked) continue;
+					if (tracked && tracked.state !== "paused") {
+						if (terminalState(tracked.state) || tracked.status) continue;
+					}
+					const status =
+						tracked && tracked.state !== "paused" && tracked.status
+							? tracked.status
+							: readDiscoveredStatus(asyncDir, Date.now());
 					const data = asObject(status);
 					const state = asString(data?.state);
-					if (!data || !["queued", "running"].includes(state ?? "")) continue;
+					const trackedPausedTerminal =
+						tracked?.state === "paused" &&
+						state !== "paused" &&
+						terminalState(state ?? "");
+					if (
+						!data ||
+						(!["queued", "running", "paused"].includes(state ?? "") &&
+							!trackedPausedTerminal)
+					)
+						continue;
+					if (isWorkflowRecord(status)) continue;
 					const pid = asFiniteNumber(data.pid);
 					if (state === "running" && pid !== undefined && processAlive(pid) === false)
 						continue;
@@ -1200,20 +1465,53 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 						asString(data.sessionId) !== sessionId
 					)
 						continue;
-					trackAsyncStarted(
-						{
-							id: data.runId ?? entry.name,
-							asyncDir,
-							agent: data.agent ?? data.agents,
-						},
-						"scan",
-					);
-					if (runs.size >= MAX_SCAN_RUNS) return;
+
+					const id = asString(data.runId) ?? entry.name;
+					const existing = tracked ?? runs.get(id);
+					if (existing) {
+						const previousState = existing.state;
+						const previousFingerprint = existing.statusFingerprint;
+						const fingerprint = statusFingerprint(status);
+						if (previousState === "paused" && state !== "paused") {
+							existing.finishedAt = undefined;
+							existing.terminalLogged = false;
+						}
+						existing.asyncDir = asyncDir;
+						existing.status = status;
+						existing.statusFingerprint = fingerprint;
+						existing.pidAlive = processAlive(data.pid);
+						if (fingerprint !== previousFingerprint) changed = true;
+						if (updateAsyncRun(existing, status)) changed = true;
+						if (
+							(!terminalState(previousState) && terminalState(existing.state)) ||
+							(previousState === "paused" && existing.state !== "paused")
+						)
+							cacheDiscoveryStatus(asyncDir, status);
+						if (terminalState(previousState) && !terminalState(existing.state))
+							changed = true;
+						if (!terminalState(existing.state)) refreshSessionUsages(existing, status);
+					} else {
+						trackAsyncStarted(
+							{ id, asyncDir, agent: data.agent ?? data.agents },
+							"scan",
+						);
+						const run = runs.get(id);
+						if (run) {
+							run.status = status;
+							run.statusFingerprint = statusFingerprint(status);
+							run.pidAlive = processAlive(data.pid);
+							updateAsyncRun(run, status);
+							refreshSessionUsages(run, status);
+							changed = true;
+						}
+					}
+					if (++scannedRuns >= MAX_SCAN_RUNS) return changed;
 				}
 			}
 		} catch {
 			// /tmp scanning is best-effort; event subscription remains authoritative for new runs.
 		}
+		return changed;
 	}
 
 	function foregroundStart(event: { toolCallId: string; args?: unknown }): void {
@@ -1236,6 +1534,7 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		rememberRun(run);
 		appendLog("started foreground subagent", "info");
 		refreshUi();
+		schedulePoll();
 	}
 
 	function foregroundUpdate(event: {
@@ -1264,6 +1563,8 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 			runs.delete(run.id);
 			existing.asyncDir = reference.asyncDir;
 			existing.foreground = false;
+			if (currentCtx?.hasUI && currentCtx.mode === "tui" && !paused)
+				pollRuns();
 			refreshUi();
 			schedulePoll();
 			return;
@@ -1275,8 +1576,17 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 		run.foreground = false;
 		run.terminalLogged = false;
 		run.finishedAt = undefined;
-		run.state = asString(readStatus(reference.asyncDir)?.state) ?? "running";
+		run.status = readStatus(reference.asyncDir);
+		run.statusFingerprint = run.status
+			? statusFingerprint(run.status)
+			: undefined;
+		run.state = asString(asObject(run.status)?.state) ?? "running";
+		run.pidAlive = processAlive(asObject(run.status)?.pid);
 		runs.set(run.id, run);
+		if (run.status) {
+			updateAsyncRun(run, run.status);
+			refreshSessionUsages(run, run.status);
+		}
 		appendLog(`attached ${run.label} [${run.id}]`, "info");
 		refreshUi();
 		schedulePoll();
@@ -1306,11 +1616,13 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 			event.isError ? "error" : "success",
 		);
 		refreshUi();
+		schedulePoll();
 	}
 
 	pi.events.on(ASYNC_STARTED_EVENT, (payload) => {
 		trackAsyncStarted(payload, "event");
-		refreshUi();
+		if (currentCtx?.hasUI && currentCtx.mode === "tui" && !paused) pollRuns();
+		else refreshUi();
 		schedulePoll();
 	});
 	pi.events.on(ASYNC_COMPLETE_EVENT, (payload) => trackAsyncComplete(payload));
@@ -1326,24 +1638,34 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", (_event, ctx) => {
-		if (ctx.hasUI && ctx.mode === "tui") removeWidget(ctx);
+		clearTimers();
+		try {
+			if (currentCtx) {
+				removeWidget(currentCtx);
+				currentCtx.ui.setStatus(STATUS_ID, undefined);
+			}
+		} catch {
+			// Best effort during session replacement.
+		}
 		currentCtx = ctx;
 		widgetInstalled = false;
-		lastDiscoveryAt = 0;
+		lastStatusText = undefined;
+		lastRenderAt = 0;
 		visible = true;
 		paused = false;
 		logs = [];
 		runs.clear();
+		discoveryCache.clear();
 		if (ctx.hasUI && ctx.mode === "tui") {
 			discoverExistingRuns(ctx);
 			refreshUi();
 			schedulePoll();
+			scheduleDiscovery();
 		}
 	});
 
 	pi.on("session_shutdown", () => {
-		if (timer) clearTimeout(timer);
-		timer = undefined;
+		clearTimers();
 		try {
 			if (currentCtx) removeWidget(currentCtx);
 			currentCtx?.ui.setStatus(STATUS_ID, undefined);
@@ -1351,14 +1673,18 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 			// Best effort during shutdown.
 		}
 		widgetInstalled = false;
+		lastStatusText = undefined;
 		currentCtx = undefined;
+		runs.clear();
+		discoveryCache.clear();
 	});
 
 	pi.registerCommand("subagent-tail", {
 		description: "切换子代理面板：on/off/pause/resume/clear/lines N（N 为底部滚动日志行数）",
 		handler: async (args, ctx) => {
 			const [command, value] = args.trim().split(/\s+/, 2);
-			switch ((command || "toggle").toLowerCase()) {
+			const normalizedCommand = (command || "toggle").toLowerCase();
+			switch (normalizedCommand) {
 				case "on":
 					visible = true;
 					paused = false;
@@ -1395,7 +1721,26 @@ export default function subagentLiveTail(pi: ExtensionAPI) {
 					visible = !visible;
 					break;
 			}
-			if (ctx.hasUI) refreshUi();
+			if (ctx.hasUI) {
+				if (normalizedCommand === "pause") {
+					clearTimers();
+					refreshUi();
+					return;
+				}
+				if (
+					normalizedCommand === "resume" ||
+					normalizedCommand === "on" ||
+					(normalizedCommand === "toggle" && visible)
+				) {
+					if (currentCtx?.mode === "tui" && !paused) {
+						pollRuns(true);
+						discoverExistingRuns(currentCtx, true);
+					}
+				}
+				refreshUi();
+				schedulePoll();
+				scheduleDiscovery();
+			}
 		},
 	});
 }
