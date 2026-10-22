@@ -287,6 +287,8 @@ spawn-at-startup "vicinae" "server"
 // DMS owns org.freedesktop.Notifications; do not start mako alongside it.
 // spawn-at-startup "mako"
 spawn-at-startup "mpd"
+// Lock with Qylock after five minutes of inactivity.
+spawn-at-startup "/home/niri/.local/bin/idlers"
 spawn-at-startup "/home/niri/.local/bin/niri-overview-wallpaper-watch"
 // spawn-at-startup "/home/niri/.local/bin/random_wallpaper.sh"
 // spawn-at-startup "env" "LC_ALL=en_US.UTF-8" "waybar"
@@ -505,7 +507,7 @@ layer-rule {
 }
 
 layer-rule {
-    match namespace="^awww-daemon$"
+    match namespace="^awww-daemonoverview$"
     place-within-backdrop true
 }
 

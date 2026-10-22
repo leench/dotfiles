@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+readonly WALLPAPER_DIR="${HOME}/Pictures/Wallpapers-main/images"
+CACHE_DIR=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/niri-overview-wallpaper.XXXXXX") || exit 1
+readonly BLURRED_IMAGE="${CACHE_DIR}/blurred.jpg"
+readonly OVERVIEW_NAMESPACE="overview"
+current_image=""
+blurred_for=""
+overview_open=false
+
+stop_wallpaper() {
+    awww kill --namespace "$OVERVIEW_NAMESPACE" >/dev/null 2>&1 || true
+    rm -rf -- "$CACHE_DIR"
+}
+
+pick_random_image() {
+    local -a images
+    mapfile -d '' -t images < <(
+        find "$WALLPAPER_DIR" -type f \
+            \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \
+            -o -iname '*.bmp' -o -iname '*.gif' -o -iname '*.webp' \) \
+            -print0
+    )
+
+    if ((${#images[@]} == 0)); then
+        echo "No wallpaper images found in $WALLPAPER_DIR" >&2
+        return 1
+    fi
+
+    local index=$((RANDOM % ${#images[@]}))
+    if ((${#images[@]} > 1)) && [[ "${images[index]}" == "$current_image" ]]; then
+        index=$(((index + 1) % ${#images[@]}))
+    fi
+    printf '%s\n' "${images[index]}"
+}
+
+ensure_overview_awww() {
+    if awww query --namespace "$OVERVIEW_NAMESPACE" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    awww-daemon --no-cache --namespace "$OVERVIEW_NAMESPACE" >/dev/null 2>&1 &
+    for _ in {1..50}; do
+        awww query --namespace "$OVERVIEW_NAMESPACE" >/dev/null 2>&1 && return 0
+        sleep 0.1
+    done
+    echo 'awww overview daemon did not start' >&2
+    return 1
+}
+
+wait_for_image() {
+    local image="$1"
+    for _ in {1..40}; do
+        if awww query --namespace "$OVERVIEW_NAMESPACE" 2>/dev/null | grep -Fq "image: $image"; then
+            return 0
+        fi
+        sleep 0.05
+    done
+    return 1
+}
+
+prepare_blur() {
+    local image="$1"
+    local temporary_image="${CACHE_DIR}/blurred.$BASHPID.jpg"
+
+    if magick "$image" -blur 0x24 -quality 88 "$temporary_image"; then
+        mv -f -- "$temporary_image" "$BLURRED_IMAGE"
+        blurred_for="$image"
+    else
+        rm -f -- "$temporary_image"
+        echo "Could not prepare blurred wallpaper for $image" >&2
+        return 1
+    fi
+}
+
+preload_next_image() {
+    local image
+    image=$(pick_random_image) || return 1
+    ensure_overview_awww || return 1
+
+    if ! awww img --namespace "$OVERVIEW_NAMESPACE" --transition-type none "$image"; then
+        return 1
+    fi
+    current_image="$image"
+
+    if ! wait_for_image "$image"; then
+        echo "awww overview did not confirm loading $image" >&2
+        return 1
+    fi
+    prepare_blur "$image"
+}
+
+show_blurred_wallpaper() {
+    [[ -n "$current_image" ]] || return 1
+    if [[ "$blurred_for" != "$current_image" || ! -s "$BLURRED_IMAGE" ]]; then
+        prepare_blur "$current_image" || return 1
+    fi
+    awww img --namespace "$OVERVIEW_NAMESPACE" --transition-type simple --transition-step 2 "$BLURRED_IMAGE"
+}
+
+trap stop_wallpaper EXIT
+trap 'exit 0' INT TERM
+
+# DMS keeps the desktop wallpaper; preload a separate image in the Overview backdrop.
+preload_next_image || true
+
+while IFS= read -r event; do
+    [[ "$event" == *'"OverviewOpenedOrClosed"'* ]] || continue
+    case "$(jq -r '.OverviewOpenedOrClosed.is_open | tostring' <<<"$event" 2>/dev/null)" in
+        true)
+            if [[ "$overview_open" != true ]]; then
+                show_blurred_wallpaper || true
+            fi
+            overview_open=true
+            ;;
+        false)
+            if [[ "$overview_open" == true ]]; then
+                preload_next_image || true
+            fi
+            overview_open=false
+            ;;
+    esac
+done < <(niri msg --json event-stream)
