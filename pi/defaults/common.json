@@ -1,5 +1,6 @@
 {
   "theme": "dark",
+  "defaultTools": ["+codemode", "+tool_search"],
   "hideThinkingBlock": true,
   "enabledModels": [
     "openai-codex/gpt-6-luna",
