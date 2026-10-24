@@ -798,6 +798,12 @@ include "dms/outputs.kdl"
 
 include "dms/windowrules.kdl"
 
+// Virtual Machine Viewer：启动时使用整列宽度。
+window-rule {
+    match app-id=r#"^org\.virt-manager\.virt-viewer$"#
+    default-column-width { proportion 1.0; }
+}
+
 include "theme.kdl"
 include "dms/binds.kdl"
 include "dms/layout.kdl"
