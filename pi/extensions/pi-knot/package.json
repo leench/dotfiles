@@ -1,0 +1,43 @@
+{
+  "name": "pi-knot",
+  "version": "0.1.0",
+  "description": "Knot Agent Session WebSocket notifications for Pi with explicit reads and optional approved-mention handling in the current session",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "scripts",
+    "README.md",
+    "knot.example.json",
+    ".env.example"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --no-warnings --test tests/*.test.ts",
+    "typecheck": "node scripts/typecheck.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/ws": "^8.18.2",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  }
+}

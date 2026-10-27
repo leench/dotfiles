@@ -28,6 +28,7 @@ repository with `--recurse-submodules`, or run `git submodule update --init
 - `proxy-router.json`: versioned model/auth proxy rules, linked independently
 - `jev-router.json`: Suggest-enabled Jev config template, copied only if the local file is missing
 - `extensions/pi-jev-router/`: shared Jev extension source, linked file-by-file into Pi's extension directory
+- `extensions/pi-knot/`: Knot Agent Session WS 通知与可选自动处理（单会话、单连接、本地收件箱；支持显式 `/knot read`，或将主人直接 @ / 已批准的结构化提及送交原 Pi 会话）
 - `extensions/subagent/config.json`: synchronized pi-subagents runtime config
 - `extensions/pi-subagent-fresh-agents.ts`: clears pi-subagents' agent discovery cache before fresh launches; resumes keep their original model and prompt
 - `defaults/common.json`: explicitly synchronized common settings fields, including builtin-agent policy
