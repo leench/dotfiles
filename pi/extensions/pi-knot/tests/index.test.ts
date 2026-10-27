@@ -8,6 +8,7 @@ import { formatEventLabel } from "../src/format.ts";
 import { StateStore, acquireStateLock, bindingPath, lockPath, rememberBinding } from "../src/store.ts";
 import {
   FakeKnot,
+  TEST_SESSION_ID,
   TEST_TOKEN,
   delay,
   loadTestConfig,
@@ -80,7 +81,7 @@ function createCtx(mode = "tui", sessionId = "pi-session-1") {
       confirm: async () => true,
       input: async () => undefined,
     },
-    sessionManager: { getSessionId: () => sessionId },
+    sessionManager: { getSessionId: () => sessionId, getSessionName: () => "测试对话" },
     isIdle: () => idle.value,
   };
   return { ctx, statusCalls, notices, selections, selectCalls, idle };
@@ -136,7 +137,12 @@ async function start(
 ): Promise<Started> {
   const server = options.server ?? (await FakeKnot.create());
   if (options.rest) {
-    server.restHandler = options.rest as any;
+    const custom = options.rest as (url: URL) => unknown;
+    // 不管用例怎么接管 REST，首次自动创建会话的那一下都由假服务应答。
+    server.restHandler = (url: URL) =>
+      url.pathname === "/api/agent/sessions"
+        ? { status: 201, body: { id: TEST_SESSION_ID, name: `测试会话 · ${TEST_SESSION_ID}` } }
+        : (custom(url) as never);
   }
   if (options.onConnection) {
     server.onConnection = options.onConnection;
@@ -353,7 +359,7 @@ test("另一个 Pi 会话不能复用同一个 Knot 会话绑定", async () => {
   }
 });
 
-test("同一 Pi 会话不能静默切换到另一个 Knot 会话", async () => {
+test("改配置里的 agentSessionId 不会换绑，改绑只能显式进行", async () => {
   const started = await start({
     onConnection: (connection) => connection.sendReady(),
   });
@@ -361,18 +367,23 @@ test("同一 Pi 会话不能静默切换到另一个 Knot 会话", async () => {
     await waitFor(() => started.server.connections.length === 1, 2_000, "首次连接");
     await shutdown(started.extension, started.session.ctx);
 
+    // 改配置里的旧字段不会换绑：本对话已经绑的就是 5。
     writeFileSync(
       join(started.agentDir, "knot.json"),
       `${JSON.stringify({ restUrl: started.server.restUrl, agentSessionId: 6, allowLocalhost: true })}\n`,
     );
     const again = createCtx("tui", "pi-session-1");
     await emit(started.extension, "session_start", { type: "session_start", reason: "startup" }, again.ctx);
-    await delay(250);
-    assert.equal(started.server.connections.length, 1, "不应连接到新的 Knot 会话");
+    await waitFor(() => started.server.connections.length === 2, 2_000, "继续用原绑定重连");
+    assert.equal(started.server.upgrades.at(-1)?.url, "/ws/agent-sessions/5");
+
+    // 显式改绑也不会抢掉已有的反向绑定，而是明确拒绝并告知如何处理。
+    await started.extension.commands.get("knot")!.handler("connect 6", again.ctx);
     assert.ok(
-      again.notices.some((notice) => /不能静默切换/.test(notice.message)),
-      `应提示不能切换：${again.notices.map((notice) => notice.message).join(" | ")}`,
+      again.notices.some((notice) => /已绑定/.test(notice.message)),
+      `应拒绝抢占已有绑定：${again.notices.map((notice) => notice.message).join(" | ")}`,
     );
+    assert.equal(started.server.upgrades.at(-1)?.url, "/ws/agent-sessions/5");
   } finally {
     await shutdown(started.extension, started.session.ctx);
     await started.server.stop();
@@ -568,7 +579,7 @@ test("inbox/read 不替另一个 Pi 会话建立绑定", async () => {
   }
 });
 
-test("未绑定时 inbox 拒绝读取且不会创建绑定", async () => {
+test("未绑定且另一个进程持锁时不连接、也不写别人的状态", async () => {
   const server = await FakeKnot.create();
   const agentDir = writeAgentConfig({ restUrl: server.restUrl, agentSessionId: 5, allowLocalhost: true });
   process.env.PI_CODING_AGENT_DIR = agentDir;
@@ -589,8 +600,8 @@ test("未绑定时 inbox 拒绝读取且不会创建绑定", async () => {
     }
     await extension.commands.get("knot")!.handler("inbox", session.ctx);
     assert.equal(session.selectCalls.length, 0);
-    assert.ok(session.notices.some((notice) => /尚未绑定/.test(notice.message)));
-    assert.equal(existsSync(bindingPath(config.stateDir)), false, "命令不能建立绑定");
+    // 未拿到独占锁时任何会话都不会改写别人的 state.json。
+    assert.equal(existsSync(join(config.stateDir, "state.json")), false, "命令不能写别人的状态");
   } finally {
     await shutdown(extension, session.ctx);
     await server.stop();

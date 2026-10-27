@@ -13,20 +13,26 @@
  */
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
-import { resolveAgentDir, loadConfig, type KnotConfig } from "./src/config.ts";
+import { resolveAgentDir, loadConfig, bindSession, type KnotBase, type KnotConfig } from "./src/config.ts";
 import {
   StateStore,
   type AutoState,
   acquireStateLock,
   bindingPath,
   checkBinding,
+  clearOwnPendingCreation,
+  hasPendingCreation,
   lockPath,
+  markPendingCreation,
+  pendingCreationPath,
+  readOwnBinding,
   rememberBinding,
   requireBinding,
   shortId,
   type StateLock,
   type StoredEvent,
 } from "./src/store.ts";
+import { createRemoteSession } from "./src/session.ts";
 import { KnotClient, type ClientStatus } from "./src/client.ts";
 import { buildAutoExecuteMessage, buildReadMessage, formatEventDetail, formatEventLabel } from "./src/format.ts";
 
@@ -61,8 +67,23 @@ export default function knotExtension(pi: ExtensionAPI): void {
     runtime?.onAgentSettled(ctx);
   });
 
+  // 每次运行前把“本对话的 Knot 会话 ID”写进提示词：模型靠它选对身份，
+  // 但真正的拦截在 tool_call，不靠提示词自律。
+  pi.on("before_agent_start", (event) => {
+    const line = runtime?.knotContextLine();
+    if (line && !event.systemPromptOptions.promptGuidelines.includes(line)) {
+      event.systemPromptOptions.promptGuidelines.push(line);
+    }
+    return undefined;
+  });
+
+  // 本客户端侧的硬性约束：Knot 工具只能用本对话绑定的 agent_session_id。
+  // 直接调用与 codemode / tool_search 的嵌套调用都会经过 tool_call。
+  pi.on("tool_call", (event) => runtime?.checkKnotToolCall(event));
+
   pi.registerCommand("knot", {
-    description: "Knot 通知：status | connect | disconnect | inbox | read <event_id>",
+    description:
+      "Knot 通知：status | connect [id] | disconnect | inbox | read <event_id>",
     getArgumentCompletions: (prefix) => {
       const text = prefix.trim();
       if (text.includes(" ")) {
@@ -101,6 +122,8 @@ class Runtime {
   private pendingNotice = 0;
   private stoppedByUser = false;
   private disposed = false;
+  /** 运行代次：断开、换绑、重建 runtime 都会 +1，旧的在途结果不得再改状态。 */
+  private epoch = 0;
   /** 同一时刻只投递一条，后续在 agent_settled 后继续。 */
   private dispatching = false;
   /**
@@ -110,6 +133,11 @@ class Runtime {
    */
   private awaitingSettle = false;
   private stateProblem?: string;
+  /** 基础配置（服务、凭证）；Knot 会话身份来自本对话的绑定。 */
+  private base?: KnotBase;
+  /** 正在自动创建会话：同一进程只允许一次。 */
+  private creating = false;
+  private sessionProblem?: string;
 
   constructor(pi: ExtensionAPI, ctx: ExtensionContext) {
     this.pi = pi;
@@ -135,12 +163,18 @@ class Runtime {
     if (this.warnings.length > 0) {
       this.notify(this.warnings.join("；"), "warning");
     }
-    this.connect(true);
+    if (this.config) {
+      this.connect(true);
+      return;
+    }
+    // 未绑定：首次接入自动创建一次属于本对话的 Knot 会话，绝不认领全局旧 ID。
+    void this.ensureSession();
   }
 
-  /** 读取配置与收件箱快照；失败时写入 configProblem，不保留旧配置。 */
+  /** 读取基础配置与本对话的绑定；失败时写入 configProblem，不保留旧配置。 */
   private load(): boolean {
     this.config = undefined;
+    this.base = undefined;
     this.store = undefined;
     const result = loadConfig();
     if (!result.ok) {
@@ -148,13 +182,26 @@ class Runtime {
       this.configProblem = result.reason;
       return false;
     }
-    this.config = result.config;
+    this.base = result.config;
     this.warnings = result.warnings;
     this.configProblem = undefined;
     try {
-      const store = new StateStore(result.config.stateDir, result.config.serviceKey, result.config.agentSessionId);
+      const bound = readOwnBinding(result.config.dataDir, this.piSessionId);
+      if (!bound) {
+        // 未绑定不是错误：由 ensureSession / 显式 connect 决定下一步。
+        return true;
+      }
+      const config = bindSession(result.config, bound.agentSessionId);
+      if (config.serviceKey !== bound.serviceKey) {
+        throw new Error(
+          `本 Pi 对话绑定的 Knot 会话属于另一个服务地址（记录 ${shortId(bound.serviceKey)}）；` +
+            `要换到 ${result.config.restBase} 请确认后删除 ${bindingPath(config.stateDir).replace(/\/[^/]+$/, "")} 下的绑定文件`,
+        );
+      }
+      const store = new StateStore(config.stateDir, config.serviceKey, config.agentSessionId);
       store.open();
       // 注意：这里只读取快照，绝不写入。写入发生在拿到独占锁并通过正反绑定校验之后。
+      this.config = config;
       this.store = store;
       return true;
     } catch (error) {
@@ -169,13 +216,15 @@ class Runtime {
 
   /** 所有 UI 文本（含远端字段）统一脱敏，凭证不会经错误/警告回显。 */
   private redact(text: string): string {
-    const token = this.config?.token;
+    // 未绑定时 config 为空，但 base 里已经有 Token：两者都要处理。
+    const token = this.config?.token ?? this.base?.token;
     return token ? text.split(token).join("***") : text;
   }
 
   /** 同步、幂等：停连接、取消定时器、释放锁、清状态栏。 */
   dispose(): void {
     this.disposed = true;
+    this.epoch += 1;
     this.clearNoticeTimer();
     this.client?.stop();
     this.client = undefined;
@@ -194,6 +243,10 @@ class Runtime {
         this.showStatus();
         return;
       case "connect":
+        if (rest[0]) {
+          this.bindExplicit(rest[0]);
+          return;
+        }
         this.connect(false);
         return;
       case "disconnect":
@@ -240,12 +293,17 @@ class Runtime {
         return;
       }
     } else if (!this.config || !this.store) {
+      // 自动连接时还没有绑定：不喑默借用别人的会话，保持未连接。
       this.renderStatus();
       return;
     }
     const config = this.config;
     const store = this.store;
     if (!config || !store) {
+      if (!auto) {
+        // 显式 connect 但本对话还没有绑定：自动创建一个属于它的 Knot 会话。
+        void this.ensureSession();
+      }
       this.renderStatus();
       return;
     }
@@ -314,6 +372,8 @@ class Runtime {
   }
 
   private disconnect(): void {
+    // 让创建中的请求作废：它回来时不能再把连接拉起来。
+    this.epoch += 1;
     this.clearNoticeTimer();
     this.awaitingSettle = false;
     this.client?.stop();
@@ -322,6 +382,214 @@ class Runtime {
     this.stoppedByUser = true;
     this.renderStatus();
     this.notify("已断开 Knot；绑定与未读收件箱保留，/knot connect 可重新连接", "info");
+  }
+
+  /** 默认会话名：让同一个 Agent 下的多个 Pi 对话在成员列表里能区分。 */
+  private defaultSessionName(): string {
+    const manager = this.ctx.sessionManager as { getSessionName?: () => string | undefined };
+    const named = (typeof manager.getSessionName === "function" ? manager.getSessionName() ?? "" : "").trim();
+    const label = named || "Pi";
+    const suffix = ` · ${shortId(this.piSessionId)}`;
+    // 先给唯一后缀留位置：长标题只截名字部分，否则同名的两个对话会看起来一样。
+    return `${label.slice(0, Math.max(1, 80 - suffix.length))}${suffix}`;
+  }
+
+  /**
+   * 首次接入：本对话还没有 Knot 会话时，自动创建一个并持久双向绑定。
+   *
+   * 保守边界：创建前先落一个 pending 标记；HTTP 结果不确定（超时/断网）时保留它，
+   * 下次启动不再自动创建，避免重连风暴批量造身份。确定失败（服务端有响应）才允许重试。
+   */
+  private async ensureSession(): Promise<void> {
+    if (this.disposed || this.creating || this.config) {
+      return;
+    }
+    const base = this.base;
+    if (!base || !this.isInteractive()) {
+      return;
+    }
+    if (hasPendingCreation(base.dataDir, this.piSessionId)) {
+      this.sessionProblem =
+        `上一次自动创建 Knot 会话的结果未知（${pendingCreationPath(base.dataDir, this.piSessionId)}），` +
+        "为避免重复创建身份，本次不自动创建；确认后删除该标记，或用 /knot connect <id> 绑定已有会话";
+      this.renderStatus();
+      this.notify(this.sessionProblem, "error");
+      return;
+    }
+    this.creating = true;
+    const name = this.defaultSessionName();
+    // 运行代次：disconnect、换绑、配置重载、新的 runtime 都会让它变大，
+    // 于是旧的创建结果不能再把连接拉起来。
+    const epoch = this.epoch;
+    try {
+      // 原子占位：两个同逻辑 Pi 进程只有一个能发出 POST。
+      if (!markPendingCreation(base.dataDir, this.piSessionId, name)) {
+        this.sessionProblem =
+          `另一个 Pi 进程正在为这个对话创建 Knot 会话（${pendingCreationPath(base.dataDir, this.piSessionId)}）；` +
+          "本次不再重复创建";
+        this.renderStatus();
+        this.notify(this.sessionProblem, "warning");
+        return;
+      }
+      const result = await createRemoteSession(base, name);
+      if (this.disposed) {
+        // 进程已经不在：身份若已确定创建就记下来，不要留下会挡住下次的标记。
+        if (result.ok) {
+          this.adoptCreatedSession(base, result.session, epoch, { connect: false });
+        }
+        return;
+      }
+      if (!result.ok) {
+        if (result.certain) {
+          clearOwnPendingCreation(base.dataDir, this.piSessionId);
+        }
+        this.sessionProblem = result.reason;
+        this.renderStatus();
+        this.notify(result.reason, "error");
+        return;
+      }
+      this.adoptCreatedSession(base, result.session, epoch, { connect: true });
+    } catch (error) {
+      this.sessionProblem = errorText(error);
+      this.renderStatus();
+      this.notify(this.sessionProblem, "error");
+    } finally {
+      this.creating = false;
+    }
+  }
+
+  /**
+   * 把一个刚创建好的 Knot 身份记到本对话。
+   *
+   * 身份一旦确定创建就尽量持久绑定（避免下次重复创建）；但**是否连接**由运行代次决定：
+   * 用户已经 disconnect、换过绑定或 runtime 已重建时，只保留绑定，不重连。
+   */
+  private adoptCreatedSession(
+    base: KnotBase,
+    session: { id: number; name: string },
+    epoch: number,
+    options: { connect: boolean },
+  ): void {
+    const config = bindSession(base, session.id);
+    const context = {
+      dataDir: base.dataDir,
+      stateDir: config.stateDir,
+      serviceKey: config.serviceKey,
+      agentSessionId: config.agentSessionId,
+      piSessionId: this.piSessionId,
+    };
+    try {
+      checkBinding(context);
+      rememberBinding(context);
+    } catch (error) {
+      // 身份建好了但没记到本对话：保留 pending 标记并给出已确认的 ID，人工可恢复。
+      this.sessionProblem =
+        `${errorText(error)}（新建的 Knot 会话 ${session.id} 已存在，可用 /knot connect ${session.id} 显式绑定）`;
+      this.renderStatus();
+      this.notify(this.sessionProblem, "error");
+      return;
+    }
+    clearOwnPendingCreation(base.dataDir, this.piSessionId);
+    if (this.disposed) {
+      return;
+    }
+    const store = new StateStore(config.stateDir, config.serviceKey, config.agentSessionId);
+    store.open();
+    this.config = config;
+    this.store = store;
+    this.sessionProblem = undefined;
+    this.configProblem = undefined;
+    if (!options.connect || epoch !== this.epoch) {
+      // 过程中用户按了断开或换了身份：绑定留着，连接等下一次显式操作。
+      this.renderStatus();
+      return;
+    }
+    this.notify(`已为本 Pi 对话创建 Knot 会话 ${config.agentSessionId}（${session.name}）`, "info");
+    this.connect(true);
+  }
+
+  /** `/knot connect <id>`：把本对话显式绑到一个已存在的 Knot 会话。 */
+  private bindExplicit(raw: string): void {
+    if (!this.isInteractive()) {
+      return;
+    }
+    const id = Number(raw);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      this.notify("Knot 会话 ID 必须是正整数", "error");
+      return;
+    }
+    const base = this.base;
+    if (!base) {
+      this.notify(this.configProblem ?? "Knot 未配置", "error");
+      return;
+    }
+    // 显式换绑也要作废在途的自动创建。
+    this.epoch += 1;
+    const config = bindSession(base, id);
+    const context = {
+      dataDir: base.dataDir,
+      stateDir: config.stateDir,
+      serviceKey: config.serviceKey,
+      agentSessionId: config.agentSessionId,
+      piSessionId: this.piSessionId,
+    };
+    try {
+      // 归属与锁仍由现有校验决定：不抢别人已绑定的身份，也不替别的 Pi 会话建绑。
+      checkBinding(context);
+      rememberBinding(context);
+    } catch (error) {
+      this.notify(errorText(error), "error");
+      return;
+    }
+    this.sessionProblem = undefined;
+    this.releaseLock();
+    this.connect(false);
+  }
+
+  /** 本对话的 Knot 身份（ID 不含凭证），写进系统提示让 MCP 调用用对会话。 */
+  knotContextLine(): string | undefined {
+    if (this.config) {
+      return (
+        `Knot: 本 Pi 对话绑定 Knot agent_session_id=${this.config.agentSessionId}；` +
+        "所有 mcp__knot__* 工具调用必须带上这个 id（后端只按该会话授权），不要用其他对话或别人的会话 id。"
+      );
+    }
+    if (!this.base) {
+      return undefined;
+    }
+    return "Knot: 本 Pi 对话尚未绑定 Knot 会话；调用 mcp__knot__* 之前先让用户执行 /knot connect 或 /knot connect <id>。";  }
+
+  /**
+   * 阻止 Knot 工具把请求发到别的会话。
+   *
+   * 只管“本客户端不误用身份”：不改变后端按 Agent/session 的授权模型，也不能替服务端
+   * 做安全边界。直接调用与 codemode/tool_search 的嵌套调用都会经过 tool_call。
+   */
+  checkKnotToolCall(event: { toolName: string; input: Record<string, unknown> }):
+    | { block: true; reason: string }
+    | undefined {
+    if (!event.toolName.startsWith("mcp__knot__")) {
+      return undefined;
+    }
+    const raw = event.input.agent_session_id;
+    if (raw === undefined || raw === null) {
+      return undefined;
+    }
+    const bound = this.config?.agentSessionId;
+    if (bound === undefined) {
+      return {
+        block: true,
+        reason: "本 Pi 对话尚未绑定 Knot 会话：先执行 /knot connect 或 /knot connect <id>，再调用 Knot 工具",
+      };
+    }
+    const value = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isSafeInteger(value) || value !== bound) {
+      return {
+        block: true,
+        reason: `本 Pi 对话绑定的是 Knot 会话 ${bound}，不能使用 agent_session_id=${String(raw)}；请改用 ${bound}`,
+      };
+    }
+    return undefined;
   }
 
   private async showInbox(ctx: ExtensionCommandContext): Promise<void> {
@@ -455,9 +723,26 @@ class Runtime {
   private showStatus(): void {
     const lines: string[] = [];
     if (!this.config) {
-      lines.push(this.configProblem ?? "Knot 未配置");
+      if (this.configProblem) {
+        lines.push(this.configProblem);
+      } else {
+        lines.push(`状态：未绑定 Knot 会话${this.creating ? "（正在创建…）" : ""}`);
+        lines.push("首次接入会自动创建本 Pi 对话专属的 Knot 会话；也可 /knot connect <已存在的会话 ID> 显式绑定。");
+        if (this.base?.legacySessionId !== undefined) {
+          lines.push(
+            `knot.json 里的 agentSessionId=${this.base.legacySessionId} 不再自动生效；` +
+              `确实要用它请执行 /knot connect ${this.base.legacySessionId}`,
+          );
+        }
+      }
       lines.push(`配置文件：${joinAgentConfigPath()}`);
-      this.notify(lines.join("\n"), "info");
+      if (this.sessionProblem) {
+        lines.push(this.sessionProblem);
+      }
+      if (this.warnings.length > 0) {
+        lines.push(`提示：${this.warnings.join("；")}`);
+      }
+      this.notify(lines.join("\n"), this.configProblem || this.sessionProblem ? "warning" : "info");
       return;
     }
     const state = this.configProblem
@@ -497,6 +782,9 @@ class Runtime {
     if (this.bindingProblem) {
       lines.push(this.bindingProblem);
     }
+    if (this.sessionProblem) {
+      lines.push(this.sessionProblem);
+    }
     if (this.stateProblem) {
       lines.push(this.stateProblem);
     }
@@ -529,7 +817,12 @@ class Runtime {
       this.load();
     }
     if (!this.config || !this.store) {
-      return this.configProblem ?? "Knot 未配置";
+      if (this.configProblem) {
+        return this.configProblem;
+      }
+      return this.base
+        ? "本 Pi 对话尚未绑定 Knot 会话：请先 /knot connect（会自动创建）或 /knot connect <id>"
+        : "Knot 未配置";
     }
     const lockProblem = this.ensureLock();
     if (lockProblem) {
@@ -606,7 +899,11 @@ class Runtime {
 
   private statusText(): string {
     if (!this.config) {
-      return "knot · 未配置";
+      // 完全没有可用配置时仍是既有文案；已读到服务配置、只是没有会话绑定时单独显示。
+      if (!this.base) {
+        return "knot · 未配置";
+      }
+      return this.creating ? "knot · 未绑定（创建中）" : "knot · 未绑定";
     }
     const state = this.configProblem
       ? "收件箱不可用"

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { loadConfig, resolveAgentDir } from "../src/config.ts";
+import { bindSession, loadConfig, resolveAgentDir } from "../src/config.ts";
 
 const TOKEN = "test-token-0123456789abcdef";
 
@@ -49,9 +49,9 @@ test("localhost 需要显式 allowLocalhost，并给出明文提示", () => {
   const allowedDir = agentDir({ restUrl: "http://127.0.0.1:8080", agentSessionId: 5, allowLocalhost: true });
   const allowed = loadConfig(withToken(allowedDir));
   assert.equal(allowed.ok, true);
-  const config = (allowed as { config: { restBase: string; wsUrl: string }; warnings: string[] }).config;
-  assert.equal(config.restBase, "http://127.0.0.1:8080");
-  assert.equal(config.wsUrl, "ws://127.0.0.1:8080/ws/agent-sessions/5");
+  const base = (allowed as { config: { restBase: string }; warnings: string[] }).config;
+  assert.equal(base.restBase, "http://127.0.0.1:8080");
+  assert.equal(bindSession(base as never, 5).wsUrl, "ws://127.0.0.1:8080/ws/agent-sessions/5");
   assert.match((allowed as { warnings: string[] }).warnings.join(""), /localhost/);
 });
 
@@ -74,27 +74,21 @@ test("REST 地址不允许 userinfo、查询串或片段", () => {
   }
 });
 
-test("WS 地址必须同源且路径与会话 ID 一致", () => {
-  const cases = [
-    { wsUrl: "wss://other.example.com/ws/agent-sessions/5", pattern: /同源/ },
-    { wsUrl: "wss://knot.example.com/ws/agent-sessions/6", pattern: /路径/ },
-    { wsUrl: "wss://knot.example.com/ws/agent-sessions/5/", pattern: /路径/ },
-    { wsUrl: "wss://knot.example.com/ws/agent-sessions/5?token=x", pattern: /查询串/ },
-    { wsUrl: "wss://knot.example.com/ws/agent-sessions/5#frag", pattern: /查询串/ },
-  ];
-  for (const item of cases) {
-    const result = loadConfig(
-      withToken(
-        agentDir({
-          restUrl: "https://knot.example.com",
-          wsUrl: item.wsUrl,
-          agentSessionId: 5,
-        }),
-      ),
-    );
-    assert.equal(result.ok, false, item.wsUrl);
-    assert.match((result as { reason: string }).reason, item.pattern);
-  }
+test("WS 地址由绑定的会话 ID 推导，配置文件里的 wsUrl 被忽略", () => {
+  const result = loadConfig(
+    withToken(
+      agentDir({
+        restUrl: "https://knot.example.com",
+        wsUrl: "wss://other.example.com/ws/agent-sessions/6",
+        agentSessionId: 5,
+      }),
+    ),
+  );
+  assert.equal(result.ok, true);
+  const { config, warnings } = result as { config: never; warnings: string[] };
+  // 绝不能因为旧 wsUrl 把连接导向别的 host 或别的会话路径。
+  assert.equal(bindSession(config, 5).wsUrl, "wss://knot.example.com/ws/agent-sessions/5");
+  assert.match(warnings.join(""), /wsUrl/);
 });
 
 test("不提供 REST 地址但给出 WS 地址时，仍要求完整配置", () => {
@@ -135,28 +129,31 @@ test("环境变量覆盖配置文件", () => {
     KNOT_AGENT_SESSION_ID: "7",
   });
   assert.equal(result.ok, true);
-  const config = (result as { config: { restBase: string; agentSessionId: number; wsUrl: string } }).config;
-  assert.equal(config.restBase, "https://env.example.com");
-  assert.equal(config.agentSessionId, 7);
-  assert.equal(config.wsUrl, "wss://env.example.com/ws/agent-sessions/7");
+  const base = (result as { config: { restBase: string; legacySessionId?: number }; warnings: string[] }).config;
+  assert.equal(base.restBase, "https://env.example.com");
+  // 旧环境变量只作为“可显式选用的 ID”保留，不再自动生效；
+  assert.equal(base.legacySessionId, 7);
+  assert.match((result as { warnings: string[] }).warnings.join(""), /\/knot connect 7/);
+  // 显式选用时 WS 路径也随该 ID 推导。
+  assert.equal(bindSession(base as never, 7).wsUrl, "wss://env.example.com/ws/agent-sessions/7");
 });
 
 test("健康检查地址包含路径前缀时保留前缀", () => {
   const dir = agentDir({ restUrl: "https://knot.example.com/prefix/", agentSessionId: 5 });
   const result = loadConfig(withToken(dir));
   assert.equal(result.ok, true);
-  const config = (result as { config: { restBase: string; wsUrl: string } }).config;
+  const config = (result as { config: { restBase: string } }).config;
   assert.equal(config.restBase, "https://knot.example.com/prefix");
-  assert.equal(config.wsUrl, "wss://knot.example.com/prefix/ws/agent-sessions/5");
+  assert.equal(bindSession(config as never, 5).wsUrl, "wss://knot.example.com/prefix/ws/agent-sessions/5");
 });
 
 test("会话 ID 与规范化服务地址隔离游标目录", () => {
   const first = loadConfig(withToken(agentDir({ restUrl: "https://knot.example.com", agentSessionId: 5 })));
   const second = loadConfig(withToken(agentDir({ restUrl: "https://knot.example.com", agentSessionId: 6 })));
   const other = loadConfig(withToken(agentDir({ restUrl: "https://other.example.com", agentSessionId: 5 })));
-  const firstConfig = (first as { config: { serviceKey: string; stateDir: string } }).config;
-  const secondConfig = (second as { config: { serviceKey: string; stateDir: string } }).config;
-  const otherConfig = (other as { config: { serviceKey: string; stateDir: string } }).config;
+  const firstConfig = bindSession((first as { config: never }).config, 5);
+  const secondConfig = bindSession((second as { config: never }).config, 6);
+  const otherConfig = bindSession((other as { config: never }).config, 5);
   assert.notEqual(firstConfig.serviceKey, secondConfig.serviceKey);
   assert.notEqual(firstConfig.serviceKey, otherConfig.serviceKey);
   assert.notEqual(firstConfig.stateDir, secondConfig.stateDir);
@@ -320,12 +317,13 @@ test("复用 mcp.json 的 Token 不进入状态目录、服务摘要或提示", 
   const dir = mcpAgent({ url: `${REST}/mcp`, headers: { Authorization: `Bearer ${MCP_TOKEN}` } });
   const result = loadFrom(dir);
   assert.equal(result.ok, true);
+  const bound = bindSession((result as { config: never }).config, 5);
   const { config, warnings } = result as {
-    config: { stateDir: string; serviceKey: string; restBase: string };
+    config: { restBase: string };
     warnings: string[];
   };
-  assert.equal(config.stateDir.includes(MCP_TOKEN), false);
-  assert.equal(config.serviceKey.includes(MCP_TOKEN), false);
+  assert.equal(bound.stateDir.includes(MCP_TOKEN), false);
+  assert.equal(bound.serviceKey.includes(MCP_TOKEN), false);
   assert.equal(config.restBase.includes(MCP_TOKEN), false);
   assert.equal(warnings.join("").includes(MCP_TOKEN), false);
 });

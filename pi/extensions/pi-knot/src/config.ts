@@ -18,26 +18,50 @@ const BEARER_HEADER = /^Bearer[ \t]+(\S+)$/i;
 const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 const HTTP_MCP_TYPES = new Set(["http", "streamable-http"]);
 
-export interface KnotConfig {
+/**
+ * 只含与服务/凭证有关的基础配置。Knot 会话 ID 不再从全局配置读取：它属于当前
+ * Pi 对话的本地绑定（见 store.ts 的正反绑定），用 bindSession() 拼成完整配置。
+ */
+export interface KnotBase {
   /** 规范化后的 REST 基址（origin + 路径前缀，无尾斜杠）。 */
   restBase: string;
-  wsUrl: string;
-  agentSessionId: number;
   /** 只存在于内存；不落盘、不打印。 */
   token: string;
   /** 安全来源标签：环境变量或用户级 mcp.json。 */
   tokenSource: "env" | "mcp-json";
   /** 是否自动把 mention.execute（主人已审批）送交当前会话；默认关闭。 */
   autoExecuteMentions: boolean;
-  /** 按规范化服务地址 + Knot 会话 ID 隔离；不含 Token。 */
-  serviceKey: string;
-  stateDir: string;
+  allowLocalhost: boolean;
+  /** 旧版全局 agentSessionId：仅用于提示“可用 /knot connect <id> 显式选用”，绝不自动认领。 */
+  legacySessionId?: number;
   configFile: string;
   dataDir: string;
 }
 
+export interface KnotConfig extends KnotBase {
+  agentSessionId: number;
+  wsUrl: string;
+  /** 按规范化服务地址 + Knot 会话 ID 隔离；不含 Token。 */
+  serviceKey: string;
+  stateDir: string;
+}
+
+/** 把一份基础配置与一个具体的 Knot 会话 ID 合成为本对话使用的完整配置。 */
+export function bindSession(base: KnotBase, agentSessionId: number): KnotConfig {
+  const rest = new URL(base.restBase);
+  const prefix = rest.pathname === "/" ? "" : rest.pathname.replace(/\/+$/, "");
+  const serviceKey = createHash("sha256").update(`${base.restBase}|${agentSessionId}`).digest("hex").slice(0, 16);
+  return {
+    ...base,
+    agentSessionId,
+    wsUrl: `${rest.protocol === "https:" ? "wss:" : "ws:"}//${rest.host}${prefix}/ws/agent-sessions/${agentSessionId}`,
+    serviceKey,
+    stateDir: join(base.dataDir, serviceKey, String(agentSessionId)),
+  };
+}
+
 export type ConfigResult =
-  | { ok: true; config: KnotConfig; warnings: string[] }
+  | { ok: true; config: KnotBase; warnings: string[] }
   | { ok: false; missing: boolean; reason: string };
 
 /** 配置问题；message 可直接展示。 */
@@ -110,17 +134,13 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
   const missing: string[] = [];
   if (!restRaw) missing.push("KNOT_REST_URL / restUrl");
-  if (!sessionRaw) missing.push("KNOT_AGENT_SESSION_ID / agentSessionId");
   if (missing.length > 0) {
     return { ok: false, missing: false, reason: `Knot 配置不完整，缺少：${missing.join("、")}` };
   }
 
   try {
-    const agentSessionId = parseSessionId(sessionRaw as string);
     const rest = parseRest(restRaw as string, allowLocalhost);
-    const wsUrl = wsRaw
-      ? parseWs(wsRaw, rest, allowLocalhost, agentSessionId)
-      : `${rest.protocol === "https:" ? "wss:" : "ws:"}//${rest.host}${expectedWsPath(rest, agentSessionId)}`;
+    const legacySessionId = sessionRaw ? parseSessionId(sessionRaw) : undefined;
     const resolvedToken = resolveToken(env, tokenRaw, mcpFile, rest);
     if (!resolvedToken.ok) {
       return { ok: false, missing: false, reason: resolvedToken.reason };
@@ -129,20 +149,25 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     if (allowLocalhost && isLocalhost(rest.hostname)) {
       warnings.push("当前使用明文 localhost 连接，仅限本地开发");
     }
-    const restBase = normalizeRest(rest);
-    const serviceKey = createHash("sha256").update(`${restBase}|${agentSessionId}`).digest("hex").slice(0, 16);
+    if (legacySessionId !== undefined) {
+      warnings.push(
+        `knot.json 里的 agentSessionId=${legacySessionId} 不再自动绑定到每个 Pi 对话；` +
+          `如确实要用它，请执行 /knot connect ${legacySessionId}`,
+      );
+    }
+    if (wsRaw) {
+      warnings.push("wsUrl 由绑定的 Knot 会话 ID 推导，配置文件里的 wsUrl 已忽略");
+    }
     return {
       ok: true,
       warnings,
       config: {
-        restBase,
-        wsUrl,
-        agentSessionId,
+        restBase: normalizeRest(rest),
         token: resolvedToken.token,
         tokenSource: resolvedToken.source,
         autoExecuteMentions,
-        serviceKey,
-        stateDir: join(dataDir, serviceKey, String(agentSessionId)),
+        allowLocalhost,
+        legacySessionId,
         configFile,
         dataDir,
       },
@@ -187,39 +212,6 @@ function parseRest(raw: string, allowLocalhost: boolean): URL {
     );
   }
   return url;
-}
-
-function parseWs(raw: string, rest: URL, allowLocalhost: boolean, agentSessionId: number): string {
-  const url = parseUrl(raw, "KNOT_WS_URL / wsUrl");
-  if (url.username || url.password) {
-    throw new ConfigError("WS 地址不能包含用户名或密码");
-  }
-  if (url.search || url.hash) {
-    throw new ConfigError("WS 地址不能包含查询串或片段（凭证只放在 Authorization 头）");
-  }
-  const expectedPath = expectedWsPath(rest, agentSessionId);
-  if (url.host !== rest.host) {
-    throw new ConfigError(`WS 地址必须与 REST 地址同源（期望 host ${rest.host}）`);
-  }
-  if (url.pathname !== expectedPath) {
-    throw new ConfigError(`WS 路径必须是 ${expectedPath}（需与 KNOT_AGENT_SESSION_ID 一致）`);
-  }
-  if (url.protocol === "ws:" && rest.protocol === "http:" && allowLocalhost && isLocalhost(url.hostname)) {
-    return url.toString();
-  }
-  if (url.protocol !== "wss:") {
-    throw new ConfigError(
-      isLocalhost(url.hostname)
-        ? "localhost 使用 ws:// 需要在该配置文件里显式设置 allowLocalhost: true；生产必须使用 WSS"
-        : "WS 地址必须使用 WSS（生产不允许明文 WebSocket）",
-    );
-  }
-  return url.toString();
-}
-
-function expectedWsPath(rest: URL, agentSessionId: number): string {
-  const prefix = rest.pathname === "/" ? "" : rest.pathname.replace(/\/+$/, "");
-  return `${prefix}/ws/agent-sessions/${agentSessionId}`;
 }
 
 function normalizeRest(rest: URL): string {

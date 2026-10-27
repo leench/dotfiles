@@ -4,7 +4,8 @@
 
 ## 做什么 / 不做什么
 
-- 一个 Pi 会话只对应一个 Knot `agent_session_id`；重连、重启、`/reload`、`/resume` 都复用同一个会话，**不会新建 Knot 会话**。
+- **每个 Pi 逻辑对话各自一个** Knot `agent_session_id`：首次接入时插件用 Agent 凭证自动创建一个并持久双向绑定；重连、重启、`/reload`、`/resume` 都复用同一个，`/new`/`fork` 不会继承父会话的身份。
+- `knot.json` / `KNOT_AGENT_SESSION_ID` 里的旧 `agentSessionId` **不再自动绑定到每个 Pi 对话**，只作为“可以显式选用”的提示；确需用它时执行 `/knot connect <id>`。
 - 一条 WS 接收该会话**已加入的所有 Room** 的事件，按 `room_id` 区分；不 join Room、不借别人的成员权限。
 - 默认（`autoExecuteMentions: false`）事件只进本地收件箱，**不会自动注入模型上下文，也不会自动回复、自动执行或自动审批**；开启后也只有结构化 `mention.execute` 会被自动送交当前会话，详见「自动处理」。
 - 不重做 MCP：正文仍然由模型通过已有的 Knot MCP 按需读取。
@@ -95,8 +96,6 @@ chmod 600 ~/.pi/agent/knot.json
 ```json
 {
   "restUrl": "https://knot.example.com",
-  "wsUrl": "wss://knot.example.com/ws/agent-sessions/5",
-  "agentSessionId": 5,
   "allowLocalhost": false
 }
 ```
@@ -104,8 +103,8 @@ chmod 600 ~/.pi/agent/knot.json
 | 字段 | 说明 |
 | --- | --- |
 | `restUrl` | Knot 基址，必须 `https`（本地开发见 `allowLocalhost`）；不允许用户名密码、查询串或片段 |
-| `wsUrl` | 可选。默认由 `restUrl` + `agentSessionId` 推导；显式写出时必须与 REST 同源，路径严格等于 `/ws/agent-sessions/<agentSessionId>` |
-| `agentSessionId` | 已存在的 Knot Agent 会话 ID（正整数），重连不会创建新会话 |
+| `wsUrl` | 已废弃：连接地址由 `restUrl` + 本对话绑定的会话 ID 推导，配置里的 `wsUrl` 会被忽略并提示 |
+| `agentSessionId` | 旧字段，可选。不再自动生效，只用于提示“可用 `/knot connect <id>` 显式选用” |
 | `allowLocalhost` | 仅本地开发：显式允许 `http://` / `ws://` 的 `localhost`、`127.0.0.1`、`[::1]` |
 | `autoExecuteMentions` | 可选，默认 `false`。开启后只把“主人直接 @ 或已审批”产生的结构化 `mention.execute` 自动送交当前会话，详见下文 |
 
@@ -113,10 +112,10 @@ chmod 600 ~/.pi/agent/knot.json
 
 ```bash
 export KNOT_REST_URL="https://knot.example.com"
-export KNOT_WS_URL="wss://knot.example.com/ws/agent-sessions/5"
-export KNOT_AGENT_SESSION_ID="5"
 export KNOT_AGENT_TOKEN="<agent token>"
 ```
+
+`KNOT_WS_URL` / `KNOT_AGENT_SESSION_ID` 同样只作为旧配置兼容提示，不再决定连接身份。
 
 ### 凭证来源（优先级）
 
@@ -205,8 +204,9 @@ rm ~/.pi/agent/pi-knot/pi-sessions/<piSessionId>.json
 
 | 命令 | 作用 |
 | --- | --- |
+| `/knot connect` | 显式连接；本对话还没有绑定 Knot 会话时**自动创建一次**并绑定 |
+| `/knot connect <id>` | 把本对话显式绑到一个已存在的 Knot 会话；已绑到别人时不抢，报错并说明如何解除 |
 | `/knot status` | 连接状态、Knot 会话、凭证来源、游标、未读数、最近错误、配置与绑定路径 |
-| `/knot connect` | 显式连接（已连接则不动） |
 | `/knot disconnect` | 断开并释放本地锁；绑定与未读保留 |
 | `/knot inbox` | 选择框列出事件类型、Room、楼层、发送者、摘要；每页 50 条，可上一页/下一页；选中只显示详情，**不**交给模型 |
 | `/knot read <event_id>` | 把该事件的定位信息作为可见自定义消息交给当前会话；不推进游标 |
@@ -256,6 +256,8 @@ npm test
 - `has_more=true` 但这一页空、或全是已处理事件（游标没有前进）时失败关闭并按持久游标重试，绝不先排空实时缓存而跳过中间事件。
 - 同一页里重复的 `event_id` 只入箱一次，重启后快照仍可加载（不会自判损坏）。
 - 同数字 ID、不同服务地址视为不同身份，不能静默切换；`inbox`/`read` 要求本 Pi 会话已持有绑定，不会替别的会话创建绑定。
+- 会话身份隔离：两个 Pi 对话各自自动创建不同 Knot 会话并各连自己的 `/ws/agent-sessions/<id>`；恢复同一对话复用原 ID 且不重复创建；旧 `agentSessionId` 不被自动认领；服务端确定失败可重试，结果不确定（超时/坏响应）时保留 `pi-knot/pending/<piSessionId>.json` 并不再自动创建，避免重连风暴批量造身份。
+- Knot 工具调用（含 codemode/`tool_search` 发起的嵌套调用）只能用本对话绑定的 `agent_session_id`，不匹配或未绑定时直接阻止并提示正确 ID；`before_agent_start` 只注入会话 ID，不带凭证。
 - 非 TUI 模式下 `connect`/`inbox`/`read` 不建连接、不弹选择框、不触发模型、不弹通知。
 - 启动时缺配置，之后补好配置再 `/knot connect` 可以连上；4401 停止后换凭证重连会使用新 Token，且 Token 不出现在通知/状态栏。
 - 外部字段的凭证内容不会回显：`sender.kind` 只接受协议枚举，`summary`/`sender.name` 脱敏，`message_version` 命中凭证时拒绝整条事件（不推进游标），配置里的未知键名也脱敏。

@@ -393,6 +393,8 @@ export function rememberBinding(context: BindingContext): void {
   const now = new Date().toISOString();
   const reverseFile = reverseBindingPath(context.dataDir, context.piSessionId);
   mkdirSync(dirname(reverseFile), { recursive: true, mode: 0o700 });
+  // 首次自动创建时状态目录还不存在：绑定写入负责把两个目录都建好。
+  mkdirSync(context.stateDir, { recursive: true, mode: 0o700 });
   writeJsonAtomic(reverseFile, {
     version: 1,
     serviceKey: context.serviceKey,
@@ -406,6 +408,92 @@ export function rememberBinding(context: BindingContext): void {
     piSessionId: context.piSessionId,
     createdAt: now,
   });
+}
+
+export interface ResolvedBinding {
+  serviceKey: string;
+  agentSessionId: number;
+}
+
+/**
+ * 本 Pi 对话已保存的 Knot 绑定（反向文件）。
+ *
+ * 这是“本对话用哪个 Knot 会话”的唯一来源：全局配置里的 agentSessionId 不参与，
+ * 所以 /new、/fork、新机器都不会默默复用另一个对话的身份。
+ */
+export function readOwnBinding(dataDir: string, piSessionId: string): ResolvedBinding | undefined {
+  const file = reverseBindingPath(dataDir, piSessionId);
+  if (!existsSync(file)) {
+    return undefined;
+  }
+  const raw = readJsonObject(file);
+  if (
+    raw.version !== 1 ||
+    !isInteger(raw.agentSessionId) ||
+    raw.agentSessionId <= 0 ||
+    typeof raw.serviceKey !== "string" ||
+    !raw.serviceKey
+  ) {
+    throw new Error(`无法读取 ${file}；为避免误用 Knot 会话，已停止。确认后可手工删除该文件。`);
+  }
+  return { serviceKey: raw.serviceKey, agentSessionId: raw.agentSessionId };
+}
+
+/**
+ * “正在创建会话”标记：HTTP 结果不确定时保留，下次启动不再自动创建。
+ * 创建一个没落盘的新身份最多浪费一条记录，但不能变成每次重连都新建。
+ */
+export function pendingCreationPath(dataDir: string, piSessionId: string): string {
+  return join(dataDir, "pending", `${piSessionId}.json`);
+}
+
+export function hasPendingCreation(dataDir: string, piSessionId: string): boolean {
+  return existsSync(pendingCreationPath(dataDir, piSessionId));
+}
+
+/**
+ * 原子地占住“正在创建”标记；已经存在时返回 false，绝不覆盖。
+ *
+ * hasPending + write 之间的空档会让两个同逻辑 Pi 进程都发出 POST 并各绑一个身份，
+ * 所以这里用 O_EXCL（flag "wx"）：先占位，再创建，占不到就不发请求。
+ */
+export function markPendingCreation(dataDir: string, piSessionId: string, name: string): boolean {
+  const file = pendingCreationPath(dataDir, piSessionId);
+  mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+  try {
+    writeFileSync(
+      file,
+      `${JSON.stringify({ version: 1, name, pid: process.pid, startedAt: new Date().toISOString() }, null, 2)}\n`,
+      { encoding: "utf8", mode: 0o600, flag: "wx" },
+    );
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+/** 只允许创建者清理自己的标记：别的进程不能替它删。 */
+export function clearOwnPendingCreation(dataDir: string, piSessionId: string, pid: number = process.pid): void {
+  const file = pendingCreationPath(dataDir, piSessionId);
+  if (!existsSync(file)) {
+    return;
+  }
+  try {
+    const raw = JSON.parse(readFileSync(file, "utf8")) as { pid?: unknown };
+    if (typeof raw.pid === "number" && raw.pid !== pid) {
+      return;
+    }
+  } catch {
+    // 标记内容坏了：仍按本进程处理，避免永久卡死。
+  }
+  rmSync(file, { force: true });
+}
+
+export function clearPendingCreation(dataDir: string, piSessionId: string): void {
+  rmSync(pendingCreationPath(dataDir, piSessionId), { force: true });
 }
 
 function readLockHolder(dir: string): LockHolder | undefined {

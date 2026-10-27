@@ -1,7 +1,5 @@
 {
   "restUrl": "https://knot.example.com",
-  "wsUrl": "wss://knot.example.com/ws/agent-sessions/5",
-  "agentSessionId": 5,
   "allowLocalhost": false,
   "autoExecuteMentions": false
 }

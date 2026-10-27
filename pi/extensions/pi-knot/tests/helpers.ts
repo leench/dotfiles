@@ -8,7 +8,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WebSocketServer } from "ws";
-import { loadConfig, type KnotConfig } from "../src/config.ts";
+import { bindSession, loadConfig, type KnotConfig } from "../src/config.ts";
 
 export const TEST_TOKEN = "test-token-0123456789abcdef";
 export const TEST_SESSION_ID = 5;
@@ -55,7 +55,7 @@ export function loadTestConfig(agentDir: string, token = TEST_TOKEN): KnotConfig
   if (!result.ok) {
     throw new Error(`测试配置无效：${result.reason}`);
   }
-  return result.config;
+  return bindSession(result.config, TEST_SESSION_ID);
 }
 
 export interface FakeConnection {
@@ -79,11 +79,13 @@ export class FakeKnot {
   readonly connections: FakeConnection[] = [];
   /** 非 101 的握手响应，用来验证重定向/权限拒绝的处理。 */
   httpStatusOverride?: number;
-  restHandler: (url: URL) => RestResult | Promise<RestResult> = () => ({
-    status: 200,
-    body: { events: [], next_cursor: 0, has_more: false },
-  });
+  restHandler: (url: URL) => RestResult | Promise<RestResult> = (url) =>
+    url.pathname === "/api/agent/sessions"
+      ? { status: 201, body: { id: TEST_SESSION_ID, name: `测试会话 · ${TEST_SESSION_ID}` } }
+      : { status: 200, body: { events: [], next_cursor: 0, has_more: false } };
   onConnection?: (connection: FakeConnection) => void;
+  /** 最近一次 REST 请求的原始 body（测试断言 payload 用）。 */
+  lastBody = "";
   port = 0;
 
   private http?: ReturnType<typeof createServer>;
@@ -109,7 +111,13 @@ export class FakeKnot {
 
   async start(): Promise<void> {
     const http = createServer((request, response) => {
-      void this.handleRest(request, response);
+      // 收集请求体，测试需要断言实际发送的 payload（例如自动创建的会话名）。
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        this.lastBody = Buffer.concat(chunks).toString("utf8");
+        void this.handleRest(request, response);
+      });
     });
     http.on("upgrade", (request, socket, head) => {
       this.upgrades.push({ url: request.url ?? "" });
