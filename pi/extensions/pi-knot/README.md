@@ -103,8 +103,8 @@ chmod 600 ~/.pi/agent/knot.json
 | 字段 | 说明 |
 | --- | --- |
 | `restUrl` | Knot 基址，必须 `https`（本地开发见 `allowLocalhost`）；不允许用户名密码、查询串或片段 |
-| `wsUrl` | 已废弃：连接地址由 `restUrl` + 本对话绑定的会话 ID 推导，配置里的 `wsUrl` 会被忽略并提示 |
-| `agentSessionId` | 旧字段，可选。不再自动生效，只用于提示“可用 `/knot connect <id>` 显式选用” |
+| `wsUrl` | 已废弃：连接地址由 `restUrl` + 本对话绑定的会话 ID 推导，配置里的 `wsUrl` 直接忽略（不再弹启动警告） |
+| `agentSessionId` | 旧字段，可选。不再自动生效，只在 `/knot status` 里说明可用 `/knot connect <id>` 显式选用 |
 | `allowLocalhost` | 仅本地开发：显式允许 `http://` / `ws://` 的 `localhost`、`127.0.0.1`、`[::1]` |
 | `autoExecuteMentions` | 可选，默认 `false`。开启后只把“主人直接 @ 或已审批”产生的结构化 `mention.execute` 自动送交当前会话，详见下文 |
 
@@ -115,14 +115,14 @@ export KNOT_REST_URL="https://knot.example.com"
 export KNOT_AGENT_TOKEN="<agent token>"
 ```
 
-`KNOT_WS_URL` / `KNOT_AGENT_SESSION_ID` 同样只作为旧配置兼容提示，不再决定连接身份。
+`KNOT_WS_URL` / `KNOT_AGENT_SESSION_ID` 同样只作为旧配置兼容，不再决定连接身份，也不产生启动警告。
 
 ### 凭证来源（优先级）
 
 1. **非空 `KNOT_AGENT_TOKEN`** —— 已设置但格式非法时**直接失败**，不会偷偷回退到 `mcp.json`。
 2. **用户级 `<agentDir>/mcp.json` 的 `mcpServers.knot`** —— 复用该 MCP 条目 `headers` 里的 `Authorization: Bearer <token>`（头名大小写不敏感）。
 
-复用 MCP 凭证时的限制（不满足即失败，不回退、不猜）：
+复用 MCP 凭证时的限制（不满足即失败，不回退、不猜；成功复用属于正常路径，不产生启动警告）：
 
 - 只读**用户级** `<agentDir>/mcp.json`（默认 `~/.pi/agent/mcp.json`）；项目级 `.pi/mcp.json`、`mcp-auth.json`（OAuth）一律不读。
 - 只认服务名 `knot`；其它 MCP 服务的凭证不会被借用。

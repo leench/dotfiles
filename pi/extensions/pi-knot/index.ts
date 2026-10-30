@@ -156,8 +156,15 @@ class Runtime {
     }
     const loaded = this.load();
     this.renderStatus();
-    if (!loaded || !this.isInteractive()) {
+    if (!this.isInteractive()) {
       // JSON/print/rpc 不自动建立长连接：既不能弹框，也不能让一次性调用因句柄无法退出。
+      return;
+    }
+    if (!loaded) {
+      // 只有配置缺失/不可用时才主动提示；token 复用、旧字段回退等正常情况不打扰。
+      if (this.configProblem) {
+        this.notify(this.configProblem, "warning");
+      }
       return;
     }
     if (this.warnings.length > 0) {

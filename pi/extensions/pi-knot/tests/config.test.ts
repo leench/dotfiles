@@ -88,7 +88,8 @@ test("WS 地址由绑定的会话 ID 推导，配置文件里的 wsUrl 被忽略
   const { config, warnings } = result as { config: never; warnings: string[] };
   // 绝不能因为旧 wsUrl 把连接导向别的 host 或别的会话路径。
   assert.equal(bindSession(config, 5).wsUrl, "wss://knot.example.com/ws/agent-sessions/5");
-  assert.match(warnings.join(""), /wsUrl/);
+  // 旧 wsUrl 已被忽略是正常回退，不再作为启动警告。
+  assert.equal(warnings.join("").includes("wsUrl"), false);
 });
 
 test("不提供 REST 地址但给出 WS 地址时，仍要求完整配置", () => {
@@ -133,7 +134,8 @@ test("环境变量覆盖配置文件", () => {
   assert.equal(base.restBase, "https://env.example.com");
   // 旧环境变量只作为“可显式选用的 ID”保留，不再自动生效；
   assert.equal(base.legacySessionId, 7);
-  assert.match((result as { warnings: string[] }).warnings.join(""), /\/knot connect 7/);
+  // 旧 ID 不自动生效是正常回退，不再作为启动警告（/knot status 仍会说明）。
+  assert.equal((result as { warnings: string[] }).warnings.join("").includes("/knot connect"), false);
   // 显式选用时 WS 路径也随该 ID 推导。
   assert.equal(bindSession(base as never, 7).wsUrl, "wss://env.example.com/ws/agent-sessions/7");
 });
@@ -186,7 +188,8 @@ test("未设置环境变量时复用用户级 mcp.json 的静态 Bearer", () => 
   const { config, warnings } = result as { config: { token: string; tokenSource: string }; warnings: string[] };
   assert.equal(config.token, MCP_TOKEN);
   assert.equal(config.tokenSource, "mcp-json");
-  assert.match(warnings.join(""), /复用用户级.*mcp\.json/);
+  // 复用用户级 mcp.json 是正常路径，不再产生启动警告。
+  assert.equal(warnings.join("").includes("复用用户级"), false);
   assert.equal(warnings.join("").includes(MCP_TOKEN), false);
 });
 

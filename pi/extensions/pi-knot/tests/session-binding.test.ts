@@ -160,9 +160,10 @@ test("配置里的旧 agentSessionId 不会被自动认领", async () => {
     await waitFor(() => server.connections.length === 1, 3_000, "连接");
     assert.deepEqual(created, [31]);
     assert.equal(server.upgrades.at(-1)?.url, "/ws/agent-sessions/31");
-    assert.ok(
+    assert.equal(
       helpers.notices.some((notice) => /\/knot connect 5/.test(notice.message)),
-      "应提示旧 ID 只能显式选用",
+      false,
+      "旧 ID 属于正常回退，不再作为启动提示（可用 /knot status 查看）",
     );
   } finally {
     await emit(helpers, "session_shutdown", { type: "session_shutdown" });

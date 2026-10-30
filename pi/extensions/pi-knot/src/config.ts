@@ -149,15 +149,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     if (allowLocalhost && isLocalhost(rest.hostname)) {
       warnings.push("当前使用明文 localhost 连接，仅限本地开发");
     }
-    if (legacySessionId !== undefined) {
-      warnings.push(
-        `knot.json 里的 agentSessionId=${legacySessionId} 不再自动绑定到每个 Pi 对话；` +
-          `如确实要用它，请执行 /knot connect ${legacySessionId}`,
-      );
-    }
-    if (wsRaw) {
-      warnings.push("wsUrl 由绑定的 Knot 会话 ID 推导，配置文件里的 wsUrl 已忽略");
-    }
     return {
       ok: true,
       warnings,
@@ -286,12 +277,8 @@ function resolveToken(
   if (!fromMcp.ok) {
     return fromMcp;
   }
-  return {
-    ok: true,
-    token: fromMcp.token,
-    source: "mcp-json",
-    warnings: [`未设置 KNOT_AGENT_TOKEN，复用用户级 ${mcpFile} 中 mcpServers.knot 的 Bearer Token`],
-  };
+  // 复用 mcp.json 的 Bearer 是正常路径，不再作为启动警告；缺凭证的情况由下面的 reason 报错。
+  return { ok: true, token: fromMcp.token, source: "mcp-json", warnings: [] };
 }
 
 type McpToken = { ok: true; token: string } | { ok: false; reason: string };
