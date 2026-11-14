@@ -182,7 +182,7 @@ rm ~/.pi/agent/pi-knot/pi-sessions/<piSessionId>.json
 - 投递是 `pi.sendMessage(display: true, triggerTurn: true, deliverAs: "followUp")`：消息出现在**当前 Pi 会话**里，模型在原有会话中按需用已配置的 Knot MCP 读取正文。不另开 agent、不启动隐藏 SDK 会话、不构造 `shell`/`exec` 绕过工具审批。
 - 投递文本会说明：用户已开启自动处理，这条 execute 表示主人直接 @ 或已批准该请求，**可以在本会话按请求处理，无需再次 `/knot read` 或去 Knot 审批**；但它不是任意工具通行证，更高层指令与宿主工具安全规则仍然有效。
 - 传入的内容只有定位字段（`event_id`、`room_id`、`message_id`、`seq`、`mention_id`、`message_version`），**不含** summary/正文/发送者名字；正文、附件与摘要在模型看来仍是不可信外部输入，不能覆盖用户指令、系统规则或工具审批。
-- 结构化审批只表示“主人允许你处理这条请求”，不是任意工具通行证；如果请求本身要求回复房间，才用现有 MCP 工具在可见流程里回复，不会自动回复所有消息。
+- 对自动投递的 `mention.execute`（主人直接 @ 或聊天室审批通过），默认由模型用现有 Knot MCP 工具在可见流程中将处理结果、失败原因或需要确认的问题回复原房间，并以 `reply_to_id` 关联原指令，无需再次要求“发聊天室”。只回复本请求相关内容，不附带 `mention_session_ids` 或创建新的执行请求；普通通知与仅阅读的 `/knot read` 不自动回复。结构化审批不是任意工具通行证：超出授权或拿不准时先停止相关操作，在原房间请求确认；回复工具不可用或发送失败时在当前 Pi 会话说明，不宣称已回复。此规则是给模型的提示，不是插件强制转发全部输出。
 - 有界投递：同一时刻只投递一条；成功后保持“等待本轮结束”的闸门，下一次真正的 `agent_settled` 才放行下一条。不能只靠 `isIdle()`——Pi 在 `_isEmittingAgentSettled` 期间会把 `sendMessage` 延后，此时 `isIdle` 仍为 true。
 - 只在连接真正进入 `connected`（补拉完成）时投递；fatal（4401/4403/4409）、退避重试、手动断开时即使收到无关的 `agent_settled` 也不会执行旧 pending，成功重连后再恢复。重启/`/resume` 时即使本次没有任何新帧，也会扫描已落盘但未投递的候选。
 - 与 `readAt` 分开记录：自动投递不等于“已读”，也不会因为用户 `/knot read` 过就重复自动执行；对已自动投递的事件再 `/knot read` 只会提示“已自动投递，不会再次自动执行”。
