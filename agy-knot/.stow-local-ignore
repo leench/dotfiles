@@ -1,0 +1,9 @@
+^/README\.md$
+^/pyproject\.toml$
+^/setup\.sh$
+^/agy_knot
+^/tests
+^/\.venv
+^/__pycache__
+^/\.pytest_cache
+^/.*\.egg-info

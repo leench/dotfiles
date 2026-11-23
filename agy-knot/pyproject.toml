@@ -1,0 +1,20 @@
+[build-system]
+requires = ['setuptools>=68']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'agy-knot'
+version = '0.1.0'
+description = 'Antigravity CLI (agy) 的 Knot Agent Session WebSocket 实时订阅与执行桥接'
+readme = 'README.md'
+requires-python = '>=3.11'
+dependencies = [
+    'websockets>=15.0',
+    'python-socks[asyncio]>=2.4',
+]
+
+[project.scripts]
+agy-knot = 'agy_knot.cli:main'
+
+[tool.setuptools.packages.find]
+include = ['agy_knot*']
