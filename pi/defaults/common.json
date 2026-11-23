@@ -4,8 +4,9 @@
   "hideThinkingBlock": true,
   "enabledModels": [
     "openai-codex/gpt-6-luna",
-    "openai-codex/gpt-6.1-sol",
-    "openai-codex/gpt-6-astra",
+    "openai-codex/gpt-6.1-terra",
+    "openai-codex/gpt-6.2-sol",
+    "openai-codex/gpt-6.2-astra",
     "opencode-go/glm-5.3-flash",
     "opencode-go/deepseek-v4.1-flash",
     "opencode-go/kimi-k3",
