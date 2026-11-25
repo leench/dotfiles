@@ -35,6 +35,13 @@ import {
 import { createRemoteSession } from "./src/session.ts";
 import { KnotClient, type ClientStatus } from "./src/client.ts";
 import { buildAutoExecuteMessage, buildReadMessage, formatEventDetail, formatEventLabel } from "./src/format.ts";
+import {
+  formatAutoJoinResults,
+  joinProjectRoom,
+  loadProjectAutoJoin,
+  type AutoJoinEntry,
+  type AutoJoinOutcome,
+} from "./src/autojoin.ts";
 
 const STATUS_KEY = "knot";
 const NOTIFY_DELAY_MS = 4_000;
@@ -138,6 +145,10 @@ class Runtime {
   /** 正在自动创建会话：同一进程只允许一次。 */
   private creating = false;
   private sessionProblem?: string;
+  /** 项目级自动加入：每个 runtime 只尝试一次，结果只做展示。 */
+  private autoJoinStarted = false;
+  private autoJoinAbort?: AbortController;
+  private autoJoinSummary?: string;
 
   constructor(pi: ExtensionAPI, ctx: ExtensionContext) {
     this.pi = pi;
@@ -172,6 +183,7 @@ class Runtime {
     }
     if (this.config) {
       this.connect(true);
+      this.autoJoinProjectRooms();
       return;
     }
     // 未绑定：首次接入自动创建一次属于本对话的 Knot 会话，绝不认领全局旧 ID。
@@ -233,6 +245,8 @@ class Runtime {
     this.disposed = true;
     this.epoch += 1;
     this.clearNoticeTimer();
+    this.autoJoinAbort?.abort();
+    this.autoJoinAbort = undefined;
     this.client?.stop();
     this.client = undefined;
     this.releaseLock();
@@ -513,6 +527,105 @@ class Runtime {
     }
     this.notify(`已为本 Pi 对话创建 Knot 会话 ${config.agentSessionId}（${session.name}）`, "info");
     this.connect(true);
+    this.autoJoinProjectRooms();
+  }
+
+  /**
+   * 项目级自动加入：绑定建立后在后台跑一次，不阻塞连接与 UI。
+   *
+   * 只在交互模式、且项目受信任时读 `<cwd>/.pi/knot.json`：项目文件只决定“加入哪个
+   * Room、是否允许接替离线席位”，凭证与服务地址始终来自用户级配置。
+   */
+  private autoJoinProjectRooms(): void {
+    if (this.autoJoinStarted || this.disposed || !this.config || !this.base) {
+      return;
+    }
+    if (!this.isInteractive()) {
+      return;
+    }
+    this.autoJoinStarted = true;
+    const cwd = typeof this.ctx.cwd === "string" ? this.ctx.cwd : "";
+    if (!cwd) {
+      return;
+    }
+    if (!this.projectTrusted()) {
+      this.autoJoinSummary = "项目未受信任，未读取项目配置";
+      this.renderStatus();
+      this.notify("Knot 项目自动加入已跳过：当前项目未受信任，不读取 .pi/knot.json", "warning");
+      return;
+    }
+    const base = this.base;
+    const loaded = loadProjectAutoJoin(cwd, base.restBase);
+    if (!loaded.ok) {
+      if (!loaded.missing) {
+        this.autoJoinSummary = loaded.reason;
+        this.renderStatus();
+        this.notify(loaded.reason, "warning");
+      }
+      return;
+    }
+    if (loaded.entries.length === 0) {
+      return;
+    }
+    if (loaded.warnings.length > 0) {
+      this.notify(loaded.warnings.join("；"), "warning");
+    }
+    this.autoJoinSummary = `正在加入 ${loaded.entries.length} 个 Room`;
+    this.renderStatus();
+    const controller = new AbortController();
+    this.autoJoinAbort = controller;
+    void this.runAutoJoin(base, loaded.entries, controller.signal);
+  }
+
+  /** 逐个串行加入：单个失败不影响后续，不做重试。 */
+  private async runAutoJoin(
+    base: KnotBase,
+    entries: readonly AutoJoinEntry[],
+    signal: AbortSignal,
+  ): Promise<void> {
+    const config = this.config;
+    if (!config) {
+      return;
+    }
+    const outcomes: AutoJoinOutcome[] = [];
+    try {
+      for (const [position, entry] of entries.entries()) {
+        const outcome = await joinProjectRoom({
+          base,
+          agentSessionId: config.agentSessionId,
+          entry,
+          index: position + 1,
+          signal,
+        });
+        if (this.disposed) {
+          return;
+        }
+        outcomes.push(outcome);
+      }
+    } finally {
+      this.autoJoinAbort = undefined;
+    }
+    if (this.disposed) {
+      return;
+    }
+    const summary = formatAutoJoinResults(outcomes);
+    const joined = outcomes.filter((outcome) => outcome.status === "joined" || outcome.status === "replaced").length;
+    const failed = outcomes.length - joined;
+    this.autoJoinSummary =
+      failed === 0 ? `已加入 ${joined} 个 Room` : `已加入 ${joined} 个 Room，${failed} 个未加入`;
+    this.renderStatus();
+    if (summary.info) {
+      this.notify(summary.info, "info");
+    }
+    for (const warning of summary.warnings) {
+      this.notify(warning, "warning");
+    }
+  }
+
+  /** 项目信任缺失时不读项目文件；宿主没有该接口（旧版本）按信任处理。 */
+  private projectTrusted(): boolean {
+    const fn = (this.ctx as { isProjectTrusted?: () => boolean }).isProjectTrusted;
+    return typeof fn === "function" ? fn() !== false : true;
   }
 
   /** `/knot connect <id>`：把本对话显式绑到一个已存在的 Knot 会话。 */
@@ -551,6 +664,8 @@ class Runtime {
     this.sessionProblem = undefined;
     this.releaseLock();
     this.connect(false);
+    // 显式绑定成功也算“进入项目会话”：项目自动加入仍只做一次。
+    this.autoJoinProjectRooms();
   }
 
   /** 本对话的 Knot 身份（ID 不含凭证），写进系统提示让 MCP 调用用对会话。 */
@@ -779,6 +894,9 @@ class Runtime {
     }
     if (this.store) {
       lines.push(`游标：${this.store.cursor}　未读：${this.store.unreadCount()}　收件箱：${this.store.events.length} 条`);
+    }
+    if (this.autoJoinSummary) {
+      lines.push(`项目自动加入：${this.autoJoinSummary}`);
     }
     if (this.client?.lastError) {
       lines.push(`最近错误：${this.client.lastError}`);

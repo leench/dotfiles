@@ -71,15 +71,23 @@ export interface FakeConnection {
   terminate(): void;
 }
 
-export type RestResult = { status: number; body?: unknown; headers?: Record<string, string> };
+export type RestResult = { status: number; body?: unknown; headers?: Record<string, string>; rawBody?: string };
 
 export class FakeKnot {
-  readonly requests: { path: string; url: string; authorization?: string; query: Record<string, string> }[] = [];
+  readonly requests: {
+    path: string;
+    url: string;
+    authorization?: string;
+    accept?: string;
+    query: Record<string, string>;
+    body: string;
+  }[] = [];
   readonly upgrades: { url: string }[] = [];
   readonly connections: FakeConnection[] = [];
   /** 非 101 的握手响应，用来验证重定向/权限拒绝的处理。 */
   httpStatusOverride?: number;
-  restHandler: (url: URL) => RestResult | Promise<RestResult> = (url) =>
+  /** 第二个参数是原始请求体：需要 JSON-RPC 应答（/mcp）的用例读取它。 */
+  restHandler: (url: URL, body: string) => RestResult | Promise<RestResult> = (url) =>
     url.pathname === "/api/agent/sessions"
       ? { status: 201, body: { id: TEST_SESSION_ID, name: `测试会话 · ${TEST_SESSION_ID}` } }
       : { status: 200, body: { events: [], next_cursor: 0, has_more: false } };
@@ -115,8 +123,9 @@ export class FakeKnot {
       const chunks: Buffer[] = [];
       request.on("data", (chunk: Buffer) => chunks.push(chunk));
       request.on("end", () => {
-        this.lastBody = Buffer.concat(chunks).toString("utf8");
-        void this.handleRest(request, response);
+        const body = Buffer.concat(chunks).toString("utf8");
+        this.lastBody = body;
+        void this.handleRest(request, response, body);
       });
     });
     http.on("upgrade", (request, socket, head) => {
@@ -174,25 +183,28 @@ export class FakeKnot {
     }
   }
 
-  private async handleRest(request: any, response: any): Promise<void> {
+  private async handleRest(request: any, response: any, body: string): Promise<void> {
     const url = new URL(request.url ?? "/", this.restUrl);
     this.requests.push({
       path: url.pathname,
       url: url.toString(),
       authorization: request.headers.authorization,
+      accept: request.headers.accept,
       query: Object.fromEntries(url.searchParams),
+      body,
     });
     let result: RestResult;
     try {
-      result = await this.restHandler(url);
+      result = await this.restHandler(url, body);
     } catch {
       result = { status: 500, body: { detail: "test handler failure" } };
     }
     if (response.destroyed || response.writableEnded) {
       return;
     }
-    response.writeHead(result.status, { "content-type": "application/json", ...(result.headers ?? {}) });
-    response.end(JSON.stringify(result.body ?? {}));
+    const headers = result.headers;
+    response.writeHead(result.status, { "content-type": "application/json", ...(headers ?? {}) });
+    response.end(result.rawBody ?? JSON.stringify(result.body ?? {}));
   }
 }
 

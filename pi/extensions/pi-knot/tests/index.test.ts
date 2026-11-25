@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import knotExtension from "../index.ts";
@@ -58,7 +59,7 @@ function createExtension(onTriggerTurn?: () => void) {
   return { handlers, commands, sent, forbidden };
 }
 
-function createCtx(mode = "tui", sessionId = "pi-session-1") {
+function createCtx(mode = "tui", sessionId = "pi-session-1", cwd = process.cwd(), trusted = true) {
   const idle = { value: true };
   const statusCalls: (string | undefined)[] = [];
   const notices: { message: string; type?: string }[] = [];
@@ -66,6 +67,7 @@ function createCtx(mode = "tui", sessionId = "pi-session-1") {
   const selectCalls: string[] = [];
   const ctx: any = {
     mode,
+    cwd,
     hasUI: mode === "tui" || mode === "rpc",
     ui: {
       setStatus(_key: string, text?: string) {
@@ -83,6 +85,7 @@ function createCtx(mode = "tui", sessionId = "pi-session-1") {
     },
     sessionManager: { getSessionId: () => sessionId, getSessionName: () => "测试对话" },
     isIdle: () => idle.value,
+    isProjectTrusted: () => trusted,
   };
   return { ctx, statusCalls, notices, selections, selectCalls, idle };
 }
@@ -131,18 +134,22 @@ async function start(
     server?: FakeKnot;
     /** 模拟 Pi 把 sendMessage 延后到 settled 之后：触发回合时不改变 isIdle。 */
     deferTrigger?: boolean;
+    /** 模拟项目根目录（读取 .pi/knot.json）；默认用进程 cwd。 */
+    projectDir?: string;
+    /** 模拟 Pi 的项目信任结果。 */
+    projectTrusted?: boolean;
     onConnection?: (connection: any) => void;
-    rest?: (url: URL) => unknown;
+    rest?: (url: URL, body: string) => unknown;
   } = {},
 ): Promise<Started> {
   const server = options.server ?? (await FakeKnot.create());
   if (options.rest) {
-    const custom = options.rest as (url: URL) => unknown;
+    const custom = options.rest as (url: URL, body: string) => unknown;
     // 不管用例怎么接管 REST，首次自动创建会话的那一下都由假服务应答。
-    server.restHandler = (url: URL) =>
+    server.restHandler = (url: URL, body: string) =>
       url.pathname === "/api/agent/sessions"
         ? { status: 201, body: { id: TEST_SESSION_ID, name: `测试会话 · ${TEST_SESSION_ID}` } }
-        : (custom(url) as never);
+        : (custom(url, body) as never);
   }
   if (options.onConnection) {
     server.onConnection = options.onConnection;
@@ -163,7 +170,12 @@ async function start(
   delete process.env.KNOT_REST_URL;
   delete process.env.KNOT_WS_URL;
   delete process.env.KNOT_AGENT_SESSION_ID;
-  const session = createCtx(options.mode ?? "tui", options.sessionId ?? "pi-session-1");
+  const session = createCtx(
+    options.mode ?? "tui",
+    options.sessionId ?? "pi-session-1",
+    options.projectDir ?? process.cwd(),
+    options.projectTrusted ?? true,
+  );
   const extension = createExtension(() => {
     // 真实 Pi 里 triggerTurn 会让会话进入运行状态，直到 agent_settled 才算空闲。
     // deferTrigger 用来模拟 _isEmittingAgentSettled 期间 sendMessage 被延后、isIdle 仍为 true。
@@ -1448,5 +1460,249 @@ test("手动 disconnect 后 settled 不投递，重连后才恢复", async () =>
     await shutdown(started.extension, started.session.ctx);
   } finally {
     await started.server.stop();
+  }
+});
+
+// ---- 项目级自动加入（项目 .pi/knot.json → MCP join_room） ----
+//
+// 全部走本地假服务：不发真实 join、不读真实邀请链接。
+
+const SEAT = "0123456789abcdef0123456789abcdef";
+
+function projectWith(autoJoin: unknown): string {
+  const dir = mkdtempSync(join(tmpdir(), "pi-knot-project-"));
+  mkdirSync(join(dir, ".pi"), { recursive: true });
+  writeFileSync(join(dir, ".pi", "knot.json"), `${JSON.stringify({ autoJoin }, null, 2)}\n`);
+  return dir;
+}
+
+function rpcReply(body: string, result: Record<string, unknown>): Record<string, unknown> {
+  const request = JSON.parse(body) as { id?: unknown };
+  return { jsonrpc: "2.0", id: request.id, result };
+}
+
+function roomPayload(roomId = 7, title = "项目协作"): Record<string, unknown> {
+  const payload = { id: roomId, title, description: "", archived: false, locked: false };
+  return { structuredContent: payload, content: [{ type: "text", text: JSON.stringify(payload) }], isError: false };
+}
+
+function toolError(text: string): Record<string, unknown> {
+  return { content: [{ type: "text", text }], isError: true };
+}
+
+function seatRefusal(
+  presence: "online" | "offline" | "unknown",
+  options: { replaced?: boolean; legacy?: boolean } = {},
+): string {
+  const presenceText =
+    presence === "online"
+      ? "该会话在线，有活跃的 Agent WS 连接。"
+      : presence === "offline"
+        ? "该会话当前无活跃连接。"
+        : "它的在线状态无法判断。";
+  const action = options.replaced
+    ? `本会话已被接替过，不能自动抢回：先征得用户明确同意，再用 expected_seat_id=${SEAT}、confirmed_by_user=true 接替`
+    : `不必再问用户，直接接替（replace_existing=true，带 ${
+        options.legacy ? "（旧数据没有席位令牌，无法绑定）" : `expected_seat_id=${SEAT}`
+      }，confirmed_by_user 不需要）并告知用户`;
+  return `该 Agent 已有会话在此 Room：会话 #6「另一个对话」。${presenceText}席位不会自动释放：${action}（旧会话只失去席位，历史消息与归属保留）。`;
+}
+
+function mcpCalls(server: FakeKnot) {
+  return server.requests.filter((request) => request.path === "/mcp");
+}
+
+function autoJoinNotices(started: Started): string[] {
+  return started.session.notices.filter((notice) => notice.message.includes("项目自动加入")).map((notice) => notice.message);
+}
+
+test("项目没有 .pi/knot.json 时保持现状，不调用 MCP", async () => {
+  const started = await start({
+    projectDir: mkdtempSync(join(tmpdir(), "pi-knot-project-")),
+    onConnection: (connection) => connection.sendReady(),
+  });
+  try {
+    await waitFor(() => (started.session.statusCalls.at(-1) ?? "").includes("已连接"), 3_000, "连接就绪");
+    await delay(300);
+    assert.equal(mcpCalls(started.server).length, 0);
+    assert.deepEqual(autoJoinNotices(started), []);
+  } finally {
+    await shutdown(started.extension, started.session.ctx);
+    await started.server.stop();
+  }
+});
+
+test("项目配置 autoJoin 时在会话启动后自动加入 Room（SSE 响应）", async () => {
+  const server = await FakeKnot.create();
+  const link = `${server.restUrl}/j/aaaaaaaa`;
+  const started = await start({
+    server,
+    projectDir: projectWith([link]),
+    rest: (url, body) => {
+      if (url.pathname !== "/mcp") {
+        return { status: 200, body: { events: [], next_cursor: 0, has_more: false } };
+      }
+      const reply = rpcReply(body, roomPayload());
+      return {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        rawBody: `event: message\ndata: ${JSON.stringify(reply)}\n\n`,
+      };
+    },
+  });
+  try {
+    await waitFor(() => mcpCalls(started.server).length === 1, 3_000, "调用 join_room");
+    const call = mcpCalls(started.server)[0];
+    assert.equal(call.authorization, `Bearer ${TEST_TOKEN}`);
+    assert.match(call.accept ?? "", /text\/event-stream/);
+    const payload = JSON.parse(call.body);
+    assert.equal(payload.method, "tools/call");
+    assert.equal(payload.params.name, "join_room");
+    assert.equal(payload.params.arguments.link, link);
+    assert.equal(payload.params.arguments.agent_session_id, TEST_SESSION_ID);
+    assert.equal("replace_existing" in payload.params.arguments, false, "默认不能接替");
+
+    await waitFor(() => autoJoinNotices(started).length === 1, 3_000, "加入通知");
+    assert.match(autoJoinNotices(started)[0], /已加入 Room #7「项目协作」/);
+    // 邀请令牌是秘密：通知与状态栏都不能出现。
+    const visible = [...autoJoinNotices(started), ...started.session.statusCalls].join("\n");
+    assert.equal(visible.includes("aaaaaaaa"), false);
+    assert.equal(visible.includes(TEST_TOKEN), false);
+  } finally {
+    await shutdown(started.extension, started.session.ctx);
+    await server.stop();
+  }
+});
+
+test("占位会话在线时不自动接替，即使配置了 replaceOffline", async () => {
+  const server = await FakeKnot.create();
+  const started = await start({
+    server,
+    projectDir: projectWith([{ link: `${server.restUrl}/j/bbbbbbbb`, replaceOffline: true }]),
+    rest: (url, body) => {
+      if (url.pathname !== "/mcp") {
+        return { status: 200, body: { events: [], next_cursor: 0, has_more: false } };
+      }
+      return { status: 200, body: rpcReply(body, toolError(seatRefusal("online"))) };
+    },
+  });
+  try {
+    await waitFor(() => autoJoinNotices(started).length === 1, 3_000, "未接替通知");
+    assert.equal(mcpCalls(started.server).length, 1, "在线席位不能发第二次请求");
+    const notice = autoJoinNotices(started)[0];
+    assert.match(notice, /未自动接替/);
+    assert.match(notice, /该会话在线/);
+    assert.equal(notice.includes(SEAT), false, "席位令牌不进通知");
+    assert.equal(notice.includes("bbbbbbbb"), false, "链接不进通知");
+    assert.equal(started.session.notices.find((item) => item.message.includes("未自动接替"))?.type, "warning");
+  } finally {
+    await shutdown(started.extension, started.session.ctx);
+    await server.stop();
+  }
+});
+
+test("replaceOffline + 离线席位时按 expected_seat_id 接替一次", async () => {
+  const server = await FakeKnot.create();
+  const started = await start({
+    server,
+    projectDir: projectWith([{ link: `${server.restUrl}/j/cccccccc`, replaceOffline: true }]),
+    rest: (url, body) => {
+      if (url.pathname !== "/mcp") {
+        return { status: 200, body: { events: [], next_cursor: 0, has_more: false } };
+      }
+      const request = JSON.parse(body) as { params: { arguments: Record<string, unknown> } };
+      if (request.params.arguments.replace_existing === true) {
+        return { status: 200, body: rpcReply(body, roomPayload(9, "常驻 Room")) };
+      }
+      return { status: 200, body: rpcReply(body, toolError(seatRefusal("offline"))) };
+    },
+  });
+  try {
+    await waitFor(() => autoJoinNotices(started).length === 1, 3_000, "接替通知");
+    const calls = mcpCalls(started.server);
+    assert.equal(calls.length, 2);
+    const takeover = JSON.parse(calls[1].body);
+    assert.equal(takeover.params.arguments.replace_existing, true);
+    assert.equal(takeover.params.arguments.expected_seat_id, SEAT);
+    assert.equal("confirmed_by_user" in takeover.params.arguments, false, "没有用户当场确认就不能声明已同意");
+    assert.match(autoJoinNotices(started)[0], /已接替离线席位 Room #9「常驻 Room」/);
+    assert.equal(autoJoinNotices(started)[0].includes(SEAT), false);
+  } finally {
+    await shutdown(started.extension, started.session.ctx);
+    await server.stop();
+  }
+});
+
+test("离线席位但没配置 replaceOffline 时只通知，不接替", async () => {
+  const server = await FakeKnot.create();
+  const started = await start({
+    server,
+    projectDir: projectWith([`${server.restUrl}/j/dddddddd`]),
+    rest: (url, body) => {
+      if (url.pathname !== "/mcp") {
+        return { status: 200, body: { events: [], next_cursor: 0, has_more: false } };
+      }
+      return { status: 200, body: rpcReply(body, toolError(seatRefusal("offline"))) };
+    },
+  });
+  try {
+    await waitFor(() => autoJoinNotices(started).length === 1, 3_000, "未接替通知");
+    assert.equal(mcpCalls(started.server).length, 1);
+    assert.match(autoJoinNotices(started)[0], /未开启 replaceOffline/);
+  } finally {
+    await shutdown(started.extension, started.session.ctx);
+    await server.stop();
+  }
+});
+
+test("在线状态未知或曾被接替时不自动接替", async () => {
+  for (const [presence, replaced, pattern] of [
+    ["unknown", false, /在线状态无法确认/],
+    ["offline", true, /已被接替过/],
+  ] as const) {
+    const server = await FakeKnot.create();
+    const started = await start({
+      server,
+      projectDir: projectWith([{ link: `${server.restUrl}/j/eeeeeeee`, replaceOffline: true }]),
+      rest: (url, body) => {
+        if (url.pathname !== "/mcp") {
+          return { status: 200, body: { events: [], next_cursor: 0, has_more: false } };
+        }
+        return { status: 200, body: rpcReply(body, toolError(seatRefusal(presence, { replaced }))) };
+      },
+    });
+    try {
+      await waitFor(() => autoJoinNotices(started).length === 1, 3_000, "未接替通知");
+      assert.equal(mcpCalls(started.server).length, 1, `${presence}/${replaced} 不能发第二次请求`);
+      assert.match(autoJoinNotices(started)[0], pattern);
+    } finally {
+      await shutdown(started.extension, started.session.ctx);
+      await server.stop();
+    }
+  }
+});
+
+test("项目未受信任时不读项目配置、不调用 MCP", async () => {
+  const server = await FakeKnot.create();
+  const started = await start({
+    server,
+    projectDir: projectWith([`${server.restUrl}/j/ffffffff`]),
+    projectTrusted: false,
+    onConnection: (connection) => connection.sendReady(),
+    rest: (url) => {
+      if (url.pathname !== "/mcp") {
+        return { status: 200, body: { events: [], next_cursor: 0, has_more: false } };
+      }
+      return { status: 200, body: {} };
+    },
+  });
+  try {
+    await waitFor(() => (started.session.statusCalls.at(-1) ?? "").includes("已连接"), 3_000, "连接就绪");
+    await delay(300);
+    assert.equal(mcpCalls(started.server).length, 0);
+    assert.match(autoJoinNotices(started).join("\n"), /未受信任/);
+  } finally {
+    await shutdown(started.extension, started.session.ctx);
+    await server.stop();
   }
 });

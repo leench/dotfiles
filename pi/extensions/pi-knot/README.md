@@ -6,7 +6,7 @@
 
 - **每个 Pi 逻辑对话各自一个** Knot `agent_session_id`：首次接入时插件用 Agent 凭证自动创建一个并持久双向绑定；重连、重启、`/reload`、`/resume` 都复用同一个，`/new`/`fork` 不会继承父会话的身份。
 - `knot.json` / `KNOT_AGENT_SESSION_ID` 里的旧 `agentSessionId` **不再自动绑定到每个 Pi 对话**，只作为“可以显式选用”的提示；确需用它时执行 `/knot connect <id>`。
-- 一条 WS 接收该会话**已加入的所有 Room** 的事件，按 `room_id` 区分；不 join Room、不借别人的成员权限。
+- 一条 WS 接收该会话**已加入的所有 Room** 的事件，按 `room_id` 区分；不会自己加入 Room、也不借别人的成员权限——唯一例外是你在**项目级** `.pi/knot.json` 里显式写下的 `autoJoin`（见「项目级自动加入」）。
 - 默认（`autoExecuteMentions: false`）事件只进本地收件箱，**不会自动注入模型上下文，也不会自动回复、自动执行或自动审批**；开启后也只有结构化 `mention.execute` 会被自动送交当前会话，详见「自动处理」。
 - 不重做 MCP：正文仍然由模型通过已有的 Knot MCP 按需读取。
 - 交给模型的入口有两个：显式 `/knot read <event_id>`，或开启自动处理后的结构化 `mention.execute`（同一 Pi 会话内可见的 followUp 消息）。
@@ -156,6 +156,51 @@ rm ~/.pi/agent/pi-knot/<服务摘要>/<旧会话ID>/binding.json
 rm ~/.pi/agent/pi-knot/pi-sessions/<piSessionId>.json
 ```
 
+## 项目级自动加入（可选，默认关闭）
+
+进入一个项目时自动把**本 Pi 对话**加入你在该项目里写明的 Room。配置在**项目根**，不是用户目录：
+
+```
+<项目根>/.pi/knot.json
+```
+
+```json
+{
+  "autoJoin": [
+    "https://knot.example.com/j/<邀请令牌>",
+    { "link": "https://knot.example.com/j/<邀请令牌>", "replaceOffline": true }
+  ]
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `autoJoin` | 数组，最多 20 项；每项是完整加入链接（`https://<Knot 地址>/j/<令牌>`，也接受 `#<楼层>` 后缀，会自己去掉）或加入令牌本身 |
+| `replaceOffline` | 仅对象项可用，默认 `false`。只有 `true` 时才可能接替**离线**席位，见下节 |
+
+行为与边界：
+
+- **时机**：`session_start` 里、本对话的 Knot 会话绑定建立之后，后台执行，不阻塞 Pi 启动或通知流。只在 TUI 模式做；`print`/`json` 一次性调用不会改服务端成员关系。
+- **项目信任**：只在 Pi 认为该项目受信任（`ctx.isProjectTrusted()`，未做信任决策时默认受信任）时读取 `.pi/knot.json`；被拒绝信任的项目不读、不加入。
+- **凭证与服务地址**始终来自用户级配置（`knot.json` / `KNOT_AGENT_TOKEN` / `mcp.json`）；项目文件只决定“加入哪个 Room”。加入链接必须是**与配置的服务地址同源**的完整链接（否则忽略并提示，避免把令牌发给长得像 Knot 的其他站点）；加入走 `POST <服务地址>/mcp` 的 `join_room`（与模型自己调用 MCP 是同一条授权路径），不使用需要人类登录态的 `POST /api/rooms/join`。
+- **邀请令牌就是秘密**：不写进通知、状态栏、日志或状态文件；`.pi/knot.json` 建议加入 `.gitignore`，链接失效就在 Knot 里重新生成。
+- **单个失败不影响其他**：逐个串行加入，失败只提示；不重试、不自动退出 Room、不读正文、不发消息、不审批。
+- **重复执行是幂等的**：`/reload`、`/resume` 等再次触发 `session_start` 时会重新加入（服务端对同一会话的重复加入是幂等的）；`/new`/`/fork` 拿到的是新的 Knot 会话，会重新加入。
+- 项目没有 `.pi/knot.json` 或没有 `autoJoin` 时完全不动作（不提示）；`/knot status` 会显示最近一次自动加入的结果。
+
+### `replaceOffline`：只在离线且未被接替时接替
+
+同一个 Agent 在一个 Room 只能有一个会话席位（服务端规则）。本插件**默认只通知、不抢席**；即使配置了 `replaceOffline: true`，也只在服务端明确回答“原席位**无活跃连接**、且本会话在这个 Room **没有被接替过**”时才发起一次接替，并且不带 `confirmed_by_user`（没有你当场确认，就不替你说“已同意”）。
+
+| 服务端报告的原席位状态 | 结果 |
+| --- | --- |
+| 有活跃 Agent WS 连接（在线） | 不接替，只提示 |
+| 当前无活跃连接，且本会话未被接替过 | 接替一次（需对应项 `replaceOffline: true`） |
+| 在线状态无法判断 / 旧式成员没有席位令牌 | 不接替，只提示 |
+| 本会话在这个 Room 曾被接替过 | 不接替，只提示 |
+
+需要在线抢席时，在对话里明确要求，让模型带 `confirmed_by_user=true` 调 `join_room`；本插件不会自己这么做。
+
 ## 自动处理（可选，默认关闭）
 
 `knot.json` 里设置 `"autoExecuteMentions": true` 后，本插件会在**当前 Pi 会话内可见地**接收“主人已审批”的提及；默认 `false` 时行为完全是 notify-only（只进收件箱，必须 `/knot read`）。
@@ -206,7 +251,7 @@ rm ~/.pi/agent/pi-knot/pi-sessions/<piSessionId>.json
 | --- | --- |
 | `/knot connect` | 显式连接；本对话还没有绑定 Knot 会话时**自动创建一次**并绑定 |
 | `/knot connect <id>` | 把本对话显式绑到一个已存在的 Knot 会话；已绑到别人时不抢，报错并说明如何解除 |
-| `/knot status` | 连接状态、Knot 会话、凭证来源、游标、未读数、最近错误、配置与绑定路径 |
+| `/knot status` | 连接状态、Knot 会话、凭证来源、游标、未读数、最近一次项目自动加入的结果、最近错误、配置与绑定路径 |
 | `/knot disconnect` | 断开并释放本地锁；绑定与未读保留 |
 | `/knot inbox` | 选择框列出事件类型、Room、楼层、发送者、摘要；每页 50 条，可上一页/下一页；选中只显示详情，**不**交给模型 |
 | `/knot read <event_id>` | 把该事件的定位信息作为可见自定义消息交给当前会话；不推进游标 |
@@ -249,6 +294,13 @@ npm test
 ```
 
 覆盖：单连接多 Room、ready + 分页补拉 + 实时帧交错、重复与 ID 间隙、落盘失败不推进游标、缓存溢出恢复、慢 REST 期间 pong 及时、4401/4403/4409 停止重试、4408/1011 与退避上限、手动停止/关闭不重连、`/reload` 后旧回调隔离、Token 不出现在状态/落盘/URL、三类事件不自动交给模型、`/knot read` 的 `display: true` 与不可信标注、print/json 不建连、绑定与锁、重启后未读保留、重定向/权限拒绝停止重试。
+
+项目级自动加入（全部对本地假服务，不碰真实 Room）：
+
+- 无配置 / 项目未受信任时不调用 MCP；配置项错误只跳过该项并提示，提示里不出现邀请令牌。
+- 只把 Bearer 放进请求头、链接只放进请求体；SSE 与 JSON 两种响应都能解析。
+- 占位会话在线、在线状态未知、本会话曾被接替、未开 `replaceOffline`：都只发一次请求并只提示。
+- 离线且未被接替 + `replaceOffline: true`：第二次请求带 `expected_seat_id` 与 `replace_existing`，且**不**带 `confirmed_by_user`。
 
 针对并发与一致性的回归（每次连接独立 epoch）：
 
