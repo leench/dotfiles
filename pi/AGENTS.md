@@ -62,4 +62,4 @@
 - 当前模型不支持图片输入时，**必须**自动调用 `subagent` 工具委托给 `vision` 角色，不要尝试自己查看。
 - 委托时用户未指定角色也自动使用 `vision`；无需询问用户。
 - 调用方式：`subagent { agent: "vision", task: "查看图片 <路径> 并描述内容" }`；若图片是会话中粘贴的，优先确认其本地文件路径（可用 `ls`/`find` 定位）后再传给 `vision`。
-- `vision` 使用 opencode-go/mimo-v2.5（支持图片输入），返回图片描述与图中文字。
+- `vision` 使用 opencode-go/deepseek-v4.1-flash（支持图片输入），返回图片描述与图中文字。

@@ -9,8 +9,7 @@
     "openai-codex/gpt-6.2-astra",
     "opencode-go/glm-5.3-flash",
     "opencode-go/deepseek-v4.1-flash",
-    "opencode-go/kimi-k3",
-    "opencode-go/mimo-v2.5"
+    "opencode-go/kimi-k3"
   ],
   "subagents": {
     "disableBuiltins": true
