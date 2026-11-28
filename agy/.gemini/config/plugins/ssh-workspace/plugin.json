@@ -1,0 +1,5 @@
+{
+  "name": "ssh-workspace",
+  "version": "1.0.0",
+  "description": "Remote SSH workspace MCP server, rules, and /ssh slash command."
+}

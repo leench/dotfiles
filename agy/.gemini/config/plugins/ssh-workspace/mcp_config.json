@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "ssh-workspace": {
+      "command": "python3",
+      "args": [
+        "${PLUGIN_ROOT}/server/ssh_mcp_server.py"
+      ]
+    }
+  }
+}

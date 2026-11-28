@@ -1,0 +1,6 @@
+{
+  "my-project": {
+    "host": "my-ssh-host",
+    "cwd": "/path/to/remote/project"
+  }
+}
